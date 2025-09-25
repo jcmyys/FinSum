@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>종가 및 기준가격 비교 (버튼 클릭 시 데이터불러오기)</title>
+  <style>
+    table {
+      border-collapse: collapse;
+      width: 90%;
+      margin-top: 20px;
+      text-align: center;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 6px 10px;
+    }
+    th {
+      background-color: #f4f4f4;
+    }
+    input[type="number"] {
+      width: 80px;
+      text-align: right;
+    }
+    .price-label {
+      margin-left: 5px;
+      color: blue;
+      font-weight: bold;
+    }
+    #load-button {
+      margin-top: 20px;
+      padding: 8px 15px;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <h2>종목별 종가와 기준가격 비교표</h2>
+  <button id="load-button">데이터 불러오기</button>
+  <table id="price-table">
+    <thead>
+      <tr id="symbols-row"></tr>
+      <tr id="base-price-row"></tr>
+    </thead>
+    <tbody id="price-level-rows"></tbody>
+  </table>
+
+  <script>
+    const apiKey = 'UAN4E6AQL39DPU6H';
+    const symbols = ['AAPL', 'SPLG', 'MSFT', 'AMD', 'UEC'];
+
+    let basePrices = {
+      'AAPL': 256.08,
+      'SPLG': 78.68,
+      'MSFT': 514.45,
+      'AMD': 160.90,
+      'UEC': 13.50
+    };
+    const decrementRate = 0.025; 
+    const decrementRows = 10; 
+
+    const latestClosePrices = {};
+
+    // 1행: 종목명 표시
+    function renderSymbolsRow() {
+      const tr = document.getElementById('symbols-row');
+      tr.innerHTML = '<th></th>'; // 빈 칸
+      symbols.forEach(sym => {
+        const th = document.createElement('th');
+        th.textContent = sym;
+        tr.appendChild(th);
+      });
+    }
+
+    // 2행: 기준가격 input 박스 생성
+    function renderBasePriceRow() {
+      const tr = document.getElementById('base-price-row');
+      tr.innerHTML = '<td>기준가격</td>';
+      symbols.forEach(sym => {
+        const td = document.createElement('td');
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.step = '0.01';
+        input.value = basePrices[sym];
+        input.id = `input-${sym}`;
+        input.addEventListener('change', () => {
+          basePrices[sym] = parseFloat(input.value);
+          renderPriceLevels();
+        });
+        td.appendChild(input);
+        tr.appendChild(td);
+      });
+    }
+
+    // 4~13행: 가격 레벨과 종가 표시
+    function renderPriceLevels() {
+      const tbody = document.getElementById('price-level-rows');
+      tbody.innerHTML = '';
+
+      for (let i = 0; i < decrementRows; i++) {
+        const tr = document.createElement('tr');
+        const priceLabelTd = document.createElement('td');
+        priceLabelTd.textContent = (100 - decrementRate * i * 100).toFixed(2) + '% 기준가';
+        tr.appendChild(priceLabelTd);
+
+        symbols.forEach(sym => {
+          const td = document.createElement('td');
+          const levelPrice = basePrices[sym] * (1 - decrementRate * i);
+          td.textContent = levelPrice.toFixed(2);
+
+          const closePrice = latestClosePrices[sym];
+          if (closePrice !== undefined && closePrice < levelPrice) {
+            const span = document.createElement('span');
+            span.className = 'price-label';
+            span.textContent = closePrice.toFixed(2);
+            td.appendChild(span);
+          }
+          tr.appendChild(td);
+        });
+
+        tbody.appendChild(tr);
+      }
+    }
+
+    // Alpha Vantage API 호출해서 최신 종가 받기
+    async function fetchLatestClosePrice(symbol) {
+      const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${symbol}&apikey=${apiKey}`;
+      const response = await fetch(url);
+      const data = await response.json();
+      const timeSeries = data['Time Series (Daily)'];
+      if (!timeSeries) {
+        throw new Error(`${symbol} 데이터 없음`);
+      }
+      const dates = Object.keys(timeSeries).sort((a,b) => b.localeCompare(a));
+      const latestClose = parseFloat(timeSeries[dates[0]]['4. close']);
+      return latestClose;
+    }
+
+    // 버튼 클릭시 실행되는 함수
+    async function onLoadButtonClick() {
+      const button = document.getElementById('load-button');
+      button.disabled = true;
+      button.textContent = '불러오는 중...';
+
+      for (const sym of symbols) {
+        try {
+          const closePrice = await fetchLatestClosePrice(sym);
+          latestClosePrices[sym] = closePrice;
+        } catch (e) {
+          latestClosePrices[sym] = undefined;
+          console.error(e);
+          alert(`${sym} 종가 데이터 불러오기 실패`);
+        }
+      }
+
+      renderPriceLevels();
+
+      button.disabled = false;
+      button.textContent = '데이터 불러오기';
+    }
+
+    // 초기 렌더링
+    renderSymbolsRow();
+    renderBasePriceRow();
+
+    document.getElementById('load-button').addEventListener('click', onLoadButtonClick);
+  </script>
+</body>
+</html>
