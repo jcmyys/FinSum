@@ -246,6 +246,14 @@
 
       await fetchAllStockData();
 
+      // 최신 종가 기준으로 기준가격 갱신 로직 추가
+      symbols.forEach(sym => {
+        const latestPrice = latestClosePrices[sym];
+        if (latestPrice !== undefined && latestPrice > basePrices[sym]) {
+          basePrices[sym] = latestPrice;
+        }
+      });
+
       renderStockTable();
 
       renderPriceLevelsTable();

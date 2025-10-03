@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>통합 뷰 (기준가격 저장)</title>
+  <title>주식 데이터 통합 뷰 (기준가격 저장)</title>
   <style>
     table {
       border-collapse: collapse;
@@ -39,7 +39,7 @@
   </style>
 </head>
 <body>
-  <h2>최근 10거래일 종가</h2>
+  <h2>주식 5종목 최근 10거래일 종가 (최고가 빨간색 표시)</h2>
   <button id="load-button">데이터 불러오기</button>
 
   <table id="stock-table">
@@ -245,6 +245,14 @@
       btn.textContent = '불러오는 중...';
 
       await fetchAllStockData();
+
+      // 최신 종가 기준으로 기준가격 갱신 로직 추가
+      symbols.forEach(sym => {
+        const latestPrice = latestClosePrices[sym];
+        if (latestPrice !== undefined && latestPrice > basePrices[sym]) {
+          basePrices[sym] = latestPrice;
+        }
+      });
 
       renderStockTable();
 
