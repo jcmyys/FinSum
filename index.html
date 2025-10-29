@@ -58,6 +58,7 @@
         <th>AAPL</th>
         <th>SPLG</th>
         <th>MSFT</th>
+        <th>GOOGL</th>
         <th>AMD</th>
         <th>UEC</th>
       </tr>
@@ -76,7 +77,7 @@
 
   <script>
     const apiKey = 'UAN4E6AQL39DPU6H';
-    const symbols = ['AAPL', 'SPLG', 'MSFT', 'AMD', 'UEC'];
+    const symbols = ['AAPL', 'SPLG', 'MSFT', 'GOOGL', 'AMD', 'UEC'];
     const daysToShow = 10;
     const decrementRate = 0.025;
     const decrementRows = 10;
@@ -86,6 +87,7 @@
       'AAPL': 256.87,
       'SPLG': 78.68,
       'MSFT': 514.45,
+      'GOOGL': 125.30,  // GOOGL 기준가격 추가
       'AMD': 161.27,
       'UEC': 13.50
     };
@@ -238,8 +240,26 @@
       const btn = document.getElementById('load-button');
       btn.disabled = true;
       btn.textContent = '불러오는 중...';
+      
       await fetchAllStockData();
-      renderStockTable();
+      renderStockTable();  // 먼저 테이블을 렌더링하여 latestClosePrices 설정
+      
+      // 기준가격 자동 업데이트 로직
+      let pricesUpdated = false;
+      symbols.forEach(sym => {
+        const latestPrice = latestClosePrices[sym];
+        if (latestPrice && latestPrice > basePrices[sym]) {  // latestPrice가 존재하는지 확인
+          console.log(`${sym}: 기준가격 업데이트 ${basePrices[sym]} → ${latestPrice}`);  // 디버깅용 로그
+          basePrices[sym] = latestPrice;
+          document.getElementById(`input-${sym}`).value = latestPrice;
+          pricesUpdated = true;
+        }
+      });
+      
+      if (pricesUpdated) {
+        saveBasePrices();
+      }
+
       renderPriceLevelsTable();
       btn.disabled = false;
       btn.textContent = '데이터 불러오기';
@@ -259,12 +279,13 @@
   <canvas id="marketCapChart" width="720" height="340"></canvas>
   <div class="ratio-box" id="ratios"></div>
   <script>
-    const symbols2 = ['NVDA', 'MSFT', 'AAPL'];
-    const names = ['NVIDIA', 'Microsoft', 'Apple'];
+    const symbols2 = ['NVDA', 'MSFT', 'AAPL', 'GOOGL'];
+    const names = ['NVIDIA', 'Microsoft', 'Apple', 'Alphabet'];
     const shares = {
       'NVDA': 24300000000,
       'MSFT': 7430000000,
-      'AAPL': 14860000000
+      'AAPL': 14860000000,
+      'GOOGL': 12780000000  // Alphabet(Google) 발행주식수 추가
     };
     const dtEnd = Math.floor(Date.now()/1000);
     const dtStart = dtEnd - (60*60*24*30);
@@ -283,49 +304,51 @@
     async function main() {
       const res = await Promise.all(symbols2.map(fetchHistory));
       const labels = res[0].dates;
-      const s1 = res[0].marketCaps, s2 = res[1].marketCaps, s3 = res[2].marketCaps;
+      const s1 = res[0].marketCaps, 
+            s2 = res[1].marketCaps, 
+            s3 = res[2].marketCaps,
+            s4 = res[3].marketCaps;  // 4번째 데이터 추가
       const n = labels.length - 1;
       const latestCaps = [
-        {name: names[0], cap: s1[n]},
-        {name: names[1], cap: s2[n]},
-        {name: names[2], cap: s3[n]}
+          {name: names[0], cap: s1[n]},
+          {name: names[1], cap: s2[n]},
+          {name: names[2], cap: s3[n]},
+          {name: names[3], cap: s4[n]}  // 4번째 기업 추가
       ].sort((a,b)=>b.cap-a.cap);
 
-      const ratio12 = (latestCaps[0].cap / latestCaps[1].cap).toFixed(2);
-      const ratio23 = (latestCaps[1].cap / latestCaps[2].cap).toFixed(2);
-      const ratio13 = (latestCaps[0].cap / latestCaps[2].cap).toFixed(2);
-
       new Chart(document.getElementById('marketCapChart'), {
-        type: 'line',
-        data: {
-          labels: labels,
-          datasets: [
-            { label: names[0], data: s1, borderColor: 'rgb(60,180,75)', fill: false, tension: 0.25 },
-            { label: names[1], data: s2, borderColor: 'rgb(0,130,200)', fill: false, tension: 0.25 },
-            { label: names[2], data: s3, borderColor: 'rgb(245,130,48)', fill: false, tension: 0.25 }
-          ]
-        },
-        options: {
-          responsive: false,
-          plugins: { legend: { position: 'top' } },
-          scales: {
-            y: { title: { display: true, text: '시가총액 (Trillion USD)' } },
-            x: { title: { display: true, text: '날짜' } }
+          type: 'line',
+          data: {
+              labels: labels,
+              datasets: [
+                  { label: names[0], data: s1, borderColor: 'rgb(60,180,75)', fill: false, tension: 0.25 },
+                  { label: names[1], data: s2, borderColor: 'rgb(0,130,200)', fill: false, tension: 0.25 },
+                  { label: names[2], data: s3, borderColor: 'rgb(245,130,48)', fill: false, tension: 0.25 },
+                  { label: names[3], data: s4, borderColor: 'rgb(145,30,180)', fill: false, tension: 0.25 }  // 4번째 라인 추가
+              ]
+          },
+          options: {
+              responsive: false,
+              plugins: { legend: { position: 'top' } },
+              scales: {
+                  y: { title: { display: true, text: '시가총액 (Trillion USD)' } },
+                  x: { title: { display: true, text: '날짜' } }
+              }
           }
-        }
       });
 
       document.getElementById('desc').innerHTML =
-        `${labels[0]} ~ ${labels[n]} 기준 데이터 (단위: Trillion USD)`;
+          `${labels[0]} ~ ${labels[n]} 기준 데이터 (단위: Trillion USD)`;
 
       document.getElementById('ratios').innerHTML = `
-        <strong>실시간 시총 기준</strong><br>
-        1등: ${latestCaps[0].name} (${latestCaps[0].cap}조)<br>
-        2등: ${latestCaps[1].name} (${latestCaps[1].cap}조)<br>
-        3등: ${latestCaps[2].name} (${latestCaps[2].cap}조)<br><br>
-        ${latestCaps[0].name} / ${latestCaps[1].name} = <b>${ratio12}</b><br>
-        ${latestCaps[1].name} / ${latestCaps[2].name} = <b>${ratio23}</b><br>
-        ${latestCaps[0].name} / ${latestCaps[2].name} = <b>${ratio13}</b>
+          <strong>실시간 시총 기준</strong><br>
+          1등: ${latestCaps[0].name} (${latestCaps[0].cap}조)<br>
+          2등: ${latestCaps[1].name} (${latestCaps[1].cap}조)<br>
+          3등: ${latestCaps[2].name} (${latestCaps[2].cap}조)<br>
+          4등: ${latestCaps[3].name} (${latestCaps[3].cap}조)<br><br>
+          ${latestCaps[0].name} / ${latestCaps[1].name} = <b>${(latestCaps[0].cap / latestCaps[1].cap).toFixed(2)}</b><br>
+          ${latestCaps[1].name} / ${latestCaps[2].name} = <b>${(latestCaps[1].cap / latestCaps[2].cap).toFixed(2)}</b><br>
+          ${latestCaps[2].name} / ${latestCaps[3].name} = <b>${(latestCaps[2].cap / latestCaps[3].cap).toFixed(2)}</b>
       `;
     }
     main();
