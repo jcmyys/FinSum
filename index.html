@@ -48,7 +48,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <h3>주식 5종목 최근 10거래일 종가 (최고가 빨간색 표시)</h3>
+  <h3>주식 5종목 최근 15거래일 종가 (최고가 빨간색 표시)</h3>
   <button id="load-button">데이터 불러오기</button>
 
   <table id="stock-table">
@@ -78,9 +78,9 @@
   <script>
     const apiKey = 'UAN4E6AQL39DPU6H';
     const symbols = ['AAPL', 'SPLG', 'MSFT', 'GOOGL', 'AMD', 'UEC'];
-    const daysToShow = 10;
+    const daysToShow = 15;
     const decrementRate = 0.025;
-    const decrementRows = 10;
+    const decrementRows = 15;
     const STORAGE_KEY = 'stockBasePrices';
 
     let basePrices = {
