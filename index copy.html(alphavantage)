@@ -283,31 +283,17 @@
     }
 
     async function fetchSymbolData(symbol) {
-      // range=3mo: 25거래일 데이터를 충분히 확보하기 위해 최근 3달치 요청
-      const url = `https://corsproxy.io/?https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=3mo`;
-      
+      const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${symbol}&apikey=${apiKey}`;
       const response = await fetch(url);
       const data = await response.json();
+      const ts = data['Time Series (Daily)'];
+      if (!ts) throw new Error(`${symbol} 데이터 없음`);
       
-      if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
-        throw new Error(`${symbol} 데이터 없음`);
-      }
-
-      const result = data.chart.result[0];
-      const timestamps = result.timestamp;
-      const quotes = result.indicators.quote[0];
-      
-      // 데이터 포맷을 기존 로직(날짜: 가격)에 맞게 변환
+      const entries = Object.entries(ts).slice(0, daysToShow);
       const closePrices = {};
-      timestamps.forEach((ts, index) => {
-        // 종가 데이터가 있는 경우에만 처리 (장 휴무일 등 제외)
-        if (quotes.close[index] !== null) {
-          // Unix Timestamp를 YYYY-MM-DD 형식으로 변환
-          const date = new Date(ts * 1000).toISOString().split('T')[0];
-          closePrices[date] = parseFloat(quotes.close[index]);
-        }
+      entries.forEach(([date, dailyData]) => {
+        closePrices[date] = parseFloat(dailyData['4. close']);
       });
-
       return closePrices;
     }
 
