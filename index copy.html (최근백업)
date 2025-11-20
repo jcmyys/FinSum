@@ -22,11 +22,6 @@
       color: red;
       font-weight: bold;
     }
-    .summary-row {
-      background-color: #e8f4ff;
-      font-weight: bold;
-      color: #0056b3;
-    }
     input[type="number"] {
       width: 80px;
       text-align: right;
@@ -36,12 +31,10 @@
       color: blue;
       font-weight: bold;
     }
-    button {
+    #load-button {
       margin-top: 20px;
       padding: 8px 15px;
       font-size: 16px;
-      cursor: pointer;
-      margin-right: 10px; /* 버튼 간 간격 */
     }
     .ratio-box {
       margin-top: 20px;
@@ -51,26 +44,12 @@
       border-radius: 8px;
       width: 380px;
     }
-    
-    /* 추가된 스타일: 매매기록 버튼 */
-    #transaction-button {
-      background-color: #ffcccc; 
-      border: 1px solid #ff9999;
-      transition: background-color 0.3s;
-    }
-    #transaction-button:hover {
-      background-color: #ff9999;
-    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
   <h3>주식 6종목 최근 15거래일 종가 (최고가 빨간색 표시)</h3>
-  
-  <div>
-    <button id="load-button">데이터 불러오기</button>
-    <button id="transaction-button">매매기록</button>
-  </div>
+  <button id="load-button">데이터 불러오기</button>
 
   <table id="stock-table">
     <thead>
@@ -108,7 +87,7 @@
       'AAPL': 256.87,
       'SPLG': 78.68,
       'MSFT': 514.45,
-      'GOOGL': 125.30,
+      'GOOGL': 125.30,  // GOOGL 기준가격 추가
       'AMD': 161.27,
       'UEC': 13.50
     };
@@ -140,13 +119,9 @@
       if (!allStockData) return;
 
       const highestPrices = {};
-      const lowestPrices = {}; 
-
       symbols.forEach(sym => {
         const prices = Object.values(allStockData[sym]);
         highestPrices[sym] = Math.max(...prices);
-        lowestPrices[sym] = Math.min(...prices); 
-        
         const dates = Object.keys(allStockData[sym]).sort((a, b) => b.localeCompare(a));
         latestClosePrices[sym] = allStockData[sym][dates[0]];
       });
@@ -173,25 +148,6 @@
         tr.innerHTML = rowHtml;
         tbody.appendChild(tr);
       });
-
-      const summaryTr = document.createElement('tr');
-      summaryTr.className = 'summary-row'; 
-      let summaryHtml = '<td>저점 대비 상승</td>';
-
-      symbols.forEach(sym => {
-        const currentPrice = latestClosePrices[sym];
-        const lowPrice = lowestPrices[sym];
-
-        if (currentPrice !== undefined && lowPrice !== undefined && lowPrice !== 0) {
-          const growthRate = ((currentPrice - lowPrice) / lowPrice) * 100;
-          summaryHtml += `<td>+${growthRate.toFixed(2)}%</td>`;
-        } else {
-          summaryHtml += '<td>-</td>';
-        }
-      });
-
-      summaryTr.innerHTML = summaryHtml;
-      tbody.appendChild(summaryTr);
     }
 
     function renderBasePriceTableHeader() {
@@ -286,13 +242,14 @@
       btn.textContent = '불러오는 중...';
       
       await fetchAllStockData();
-      renderStockTable();  
+      renderStockTable();  // 먼저 테이블을 렌더링하여 latestClosePrices 설정
       
+      // 기준가격 자동 업데이트 로직
       let pricesUpdated = false;
       symbols.forEach(sym => {
         const latestPrice = latestClosePrices[sym];
-        if (latestPrice && latestPrice > basePrices[sym]) {  
-          console.log(`${sym}: 기준가격 업데이트 ${basePrices[sym]} → ${latestPrice}`);
+        if (latestPrice && latestPrice > basePrices[sym]) {  // latestPrice가 존재하는지 확인
+          console.log(`${sym}: 기준가격 업데이트 ${basePrices[sym]} → ${latestPrice}`);  // 디버깅용 로그
           basePrices[sym] = latestPrice;
           document.getElementById(`input-${sym}`).value = latestPrice;
           pricesUpdated = true;
@@ -308,29 +265,12 @@
       btn.textContent = '데이터 불러오기';
     }
 
-    // --- 추가된 기능: 매매기록 페이지로 이동 ---
-    function goToTransactionPage() {
-      // 1. 현재가 데이터가 있는지 확인
-      if (Object.keys(latestClosePrices).length === 0) {
-          alert("주가 정보가 없습니다. 먼저 '데이터 불러오기'를 실행해주세요.");
-          return;
-      }
-
-      // 2. LocalStorage에 'latestPrices'라는 이름으로 주가 데이터 저장
-      // AssetDonut.html과 동일한 키 이름을 사용합니다.
-      localStorage.setItem('latestPrices', JSON.stringify(latestClosePrices));
-
-      // 3. transaction.html로 페이지 이동
-      window.location.href = 'transaction.html';
-    }
-
     function init() {
       loadBasePrices();
       renderBasePriceTableHeader();
     }
 
     document.getElementById('load-button').addEventListener('click', onLoadButtonClick);
-    document.getElementById('transaction-button').addEventListener('click', goToTransactionPage); // 이벤트 리스너 등록
     init();
   </script>
 
@@ -345,7 +285,7 @@
       'NVDA': 24300000000,
       'MSFT': 7430000000,
       'AAPL': 14860000000,
-      'GOOGL': 12780000000 
+      'GOOGL': 12780000000  // Alphabet(Google) 발행주식수 추가
     };
     const dtEnd = Math.floor(Date.now()/1000);
     const dtStart = dtEnd - (60*60*24*30);
@@ -367,13 +307,13 @@
       const s1 = res[0].marketCaps, 
             s2 = res[1].marketCaps, 
             s3 = res[2].marketCaps,
-            s4 = res[3].marketCaps;
+            s4 = res[3].marketCaps;  // 4번째 데이터 추가
       const n = labels.length - 1;
       const latestCaps = [
           {name: names[0], cap: s1[n]},
           {name: names[1], cap: s2[n]},
           {name: names[2], cap: s3[n]},
-          {name: names[3], cap: s4[n]}
+          {name: names[3], cap: s4[n]}  // 4번째 기업 추가
       ].sort((a,b)=>b.cap-a.cap);
 
       new Chart(document.getElementById('marketCapChart'), {
@@ -384,7 +324,7 @@
                   { label: names[0], data: s1, borderColor: 'rgb(60,180,75)', fill: false, tension: 0.25 },
                   { label: names[1], data: s2, borderColor: 'rgb(0,130,200)', fill: false, tension: 0.25 },
                   { label: names[2], data: s3, borderColor: 'rgb(245,130,48)', fill: false, tension: 0.25 },
-                  { label: names[3], data: s4, borderColor: 'rgb(145,30,180)', fill: false, tension: 0.25 }
+                  { label: names[3], data: s4, borderColor: 'rgb(145,30,180)', fill: false, tension: 0.25 }  // 4번째 라인 추가
               ]
           },
           options: {
