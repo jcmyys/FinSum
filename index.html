@@ -22,10 +22,17 @@
       color: red;
       font-weight: bold;
     }
+    /* 저점 대비 상승률 행 스타일 (파랑) */
     .summary-row {
       background-color: #e8f4ff;
       font-weight: bold;
       color: #0056b3;
+    }
+    /* 고점 대비 하락률 행 스타일 (연한 빨강) */
+    .drop-row {
+      background-color: #ffe8e8;
+      font-weight: bold;
+      color: #d32f2f;
     }
     input[type="number"] {
       width: 80px;
@@ -41,7 +48,7 @@
       padding: 8px 15px;
       font-size: 16px;
       cursor: pointer;
-      margin-right: 10px; /* 버튼 간 간격 */
+      margin-right: 10px;
     }
     .ratio-box {
       margin-top: 20px;
@@ -52,7 +59,6 @@
       width: 380px;
     }
     
-    /* 추가된 스타일: 매매기록 버튼 */
     #transaction-button {
       background-color: #ffcccc; 
       border: 1px solid #ff9999;
@@ -65,7 +71,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <h3>주식 6종목 최근 15거래일 종가 (최고가 빨간색 표시)</h3>
+  <h3>주식 6종목 최근 25거래일 종가 (최고가 빨간색 표시)</h3>
   
   <div>
     <button id="load-button">데이터 불러오기</button>
@@ -99,7 +105,10 @@
   <script>
     const apiKey = 'UAN4E6AQL39DPU6H';
     const symbols = ['AAPL', 'SPLG', 'MSFT', 'GOOGL', 'AMD', 'UEC'];
-    const daysToShow = 15;
+    
+    // 수정됨: 데이터를 보여줄 일수를 15일에서 25일로 변경
+    const daysToShow = 25; 
+    
     const decrementRate = 0.025;
     const decrementRows = 15;
     const STORAGE_KEY = 'stockBasePrices';
@@ -145,7 +154,7 @@
       symbols.forEach(sym => {
         const prices = Object.values(allStockData[sym]);
         highestPrices[sym] = Math.max(...prices);
-        lowestPrices[sym] = Math.min(...prices); 
+        lowestPrices[sym] = Math.min(...prices); // 이제 25일 중 최저가
         
         const dates = Object.keys(allStockData[sym]).sort((a, b) => b.localeCompare(a));
         latestClosePrices[sym] = allStockData[sym][dates[0]];
@@ -157,6 +166,7 @@
       });
       const dates = Array.from(datesSet).sort((a, b) => b.localeCompare(a)).slice(0, daysToShow);
 
+      // 1. 날짜별 데이터 렌더링
       dates.forEach(date => {
         const tr = document.createElement('tr');
         let rowHtml = `<td>${date}</td>`;
@@ -174,6 +184,7 @@
         tbody.appendChild(tr);
       });
 
+      // 2. 저점 대비 상승률 행
       const summaryTr = document.createElement('tr');
       summaryTr.className = 'summary-row'; 
       let summaryHtml = '<td>저점 대비 상승</td>';
@@ -192,6 +203,26 @@
 
       summaryTr.innerHTML = summaryHtml;
       tbody.appendChild(summaryTr);
+
+      // 3. 고점 대비 하락률 행
+      const dropTr = document.createElement('tr');
+      dropTr.className = 'drop-row'; 
+      let dropHtml = '<td>고점 대비 하락</td>';
+
+      symbols.forEach(sym => {
+        const currentPrice = latestClosePrices[sym];
+        const highPrice = highestPrices[sym]; 
+
+        if (currentPrice !== undefined && highPrice !== undefined && highPrice !== 0) {
+          const dropRate = ((currentPrice - highPrice) / highPrice) * 100;
+          dropHtml += `<td>${dropRate.toFixed(2)}%</td>`;
+        } else {
+          dropHtml += '<td>-</td>';
+        }
+      });
+
+      dropTr.innerHTML = dropHtml;
+      tbody.appendChild(dropTr);
     }
 
     function renderBasePriceTableHeader() {
@@ -258,6 +289,8 @@
       const data = await response.json();
       const ts = data['Time Series (Daily)'];
       if (!ts) throw new Error(`${symbol} 데이터 없음`);
+      
+      // API에서 가져온 데이터 중 daysToShow 만큼만 자름
       const entries = Object.entries(ts).slice(0, daysToShow);
       const closePrices = {};
       entries.forEach(([date, dailyData]) => {
@@ -308,19 +341,12 @@
       btn.textContent = '데이터 불러오기';
     }
 
-    // --- 추가된 기능: 매매기록 페이지로 이동 ---
     function goToTransactionPage() {
-      // 1. 현재가 데이터가 있는지 확인
       if (Object.keys(latestClosePrices).length === 0) {
           alert("주가 정보가 없습니다. 먼저 '데이터 불러오기'를 실행해주세요.");
           return;
       }
-
-      // 2. LocalStorage에 'latestPrices'라는 이름으로 주가 데이터 저장
-      // AssetDonut.html과 동일한 키 이름을 사용합니다.
       localStorage.setItem('latestPrices', JSON.stringify(latestClosePrices));
-
-      // 3. transaction.html로 페이지 이동
       window.location.href = 'transaction.html';
     }
 
@@ -330,7 +356,7 @@
     }
 
     document.getElementById('load-button').addEventListener('click', onLoadButtonClick);
-    document.getElementById('transaction-button').addEventListener('click', goToTransactionPage); // 이벤트 리스너 등록
+    document.getElementById('transaction-button').addEventListener('click', goToTransactionPage);
     init();
   </script>
 
