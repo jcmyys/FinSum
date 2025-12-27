@@ -251,7 +251,10 @@
         const input = document.createElement('input');
         input.type = 'number';
         input.step = '0.01';
-        input.value = basePrices[sym];
+        
+        // [수정] 값을 넣을 때 toFixed(2) 적용
+        input.value = parseFloat(basePrices[sym]).toFixed(2);
+        
         input.id = `input-${sym}`;
         input.addEventListener('change', () => {
           const val = parseFloat(input.value);
@@ -350,9 +353,14 @@
         const latestPrice = latestClosePrices[sym];
         if (latestPrice && latestPrice > basePrices[sym]) {  
           console.log(`${sym}: 기준가격 업데이트 ${basePrices[sym]} → ${latestPrice}`);
-          basePrices[sym] = latestPrice;
+          
+          // [수정] 저장되는 값 자체를 소수점 2자리로 정리
+          basePrices[sym] = parseFloat(latestPrice.toFixed(2));
+          
           const inputEl = document.getElementById(`input-${sym}`);
-          if (inputEl) inputEl.value = latestPrice;
+          // [수정] 화면 업데이트 시에도 포맷팅
+          if (inputEl) inputEl.value = basePrices[sym].toFixed(2);
+          
           pricesUpdated = true;
         }
       });
