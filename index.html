@@ -71,7 +71,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <h3>주식 6종목 최근 25거래일 종가 (최고가 빨간색 표시)</h3>
+  <h3>주식 7종목 최근 25거래일 종가 (최고가 빨간색 표시)</h3>
   
   <div>
     <button id="load-button">데이터 불러오기</button>
@@ -88,7 +88,7 @@
         <th>GOOGL</th>
         <th>AMD</th>
         <th>UEC</th>
-      </tr>
+        <th>NVDA</th> </tr>
     </thead>
     <tbody></tbody>
   </table>
@@ -104,7 +104,9 @@
 
   <script>
     const apiKey = 'UAN4E6AQL39DPU6H';
-    const symbols = ['AAPL', 'SPYM', 'MSFT', 'GOOGL', 'AMD', 'UEC'];
+    
+    // [수정 1] NVDA 추가
+    const symbols = ['AAPL', 'SPYM', 'MSFT', 'GOOGL', 'AMD', 'UEC', 'NVDA'];
     
     const daysToShow = 25; 
     
@@ -112,13 +114,15 @@
     const decrementRows = 15;
     const STORAGE_KEY = 'stockBasePrices';
 
+    // [수정 2] NVDA 초기 기준가 추가 (임의값 135.00 설정, 데이터 로드시 자동 갱신됨)
     let basePrices = {
       'AAPL': 256.87,
       'SPYM': 78.68,
       'MSFT': 514.45,
       'GOOGL': 125.30,
       'AMD': 161.27,
-      'UEC': 13.50
+      'UEC': 13.50,
+      'NVDA': 135.00 
     };
 
     function loadBasePrices() {
@@ -143,6 +147,14 @@
     let latestClosePrices = {};
 
     function renderStockTable() {
+      const theadRow = document.querySelector('#stock-table thead tr');
+      // 헤더도 동적으로 다시 그리기 (NVDA 추가 반영을 위해)
+      let headerHtml = '<th>날짜</th>';
+      symbols.forEach(sym => {
+        headerHtml += `<th>${sym}</th>`;
+      });
+      theadRow.innerHTML = headerHtml;
+
       const tbody = document.querySelector('#stock-table tbody');
       tbody.innerHTML = '';
       if (!allStockData) return;
@@ -339,7 +351,8 @@
         if (latestPrice && latestPrice > basePrices[sym]) {  
           console.log(`${sym}: 기준가격 업데이트 ${basePrices[sym]} → ${latestPrice}`);
           basePrices[sym] = latestPrice;
-          document.getElementById(`input-${sym}`).value = latestPrice;
+          const inputEl = document.getElementById(`input-${sym}`);
+          if (inputEl) inputEl.value = latestPrice;
           pricesUpdated = true;
         }
       });
@@ -359,7 +372,6 @@
           return;
       }
       localStorage.setItem('latestPrices', JSON.stringify(latestClosePrices));
-      // 수정됨: 전체 URL로 변경 및 확장자 .php 적용
       window.location.href = 'https://jcmyys.infinityfree.me/AssetDonut2/transaction.php';
     }
 
