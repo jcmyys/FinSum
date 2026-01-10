@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>주식 데이터 통합 뷰 (Light Ver)</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 20px;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 10px;
+      text-align: center;
+      margin-bottom: 40px;
+      table-layout: fixed; /* 칸 너비 고정 */
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 6px;
+      word-wrap: break-word;
+    }
+    th {
+      background-color: #f4f4f4;
+    }
+    .highest { color: red; font-weight: bold; }
+    .rise-row { background-color: #fff0f0; font-weight: bold; color: #d32f2f; }
+    .fall-row { background-color: #f0f8ff; font-weight: bold; color: #0056b3; }
+    .price-val-row { background-color: #fcfcfc; color: #555; font-size: 0.95em; }
+    .divider-row td { border-bottom: 2px solid #999; }
+    
+    input[type="number"] { width: 80%; text-align: right; }
+    
+    .ticker-input {
+      width: 80%;
+      text-align: center;
+      font-weight: bold;
+      font-size: 16px;
+      border: none;
+      background: transparent;
+      color: inherit;
+      padding: 4px;
+      border-bottom: 1px dashed #999;
+      cursor: text;
+    }
+    .ticker-input:focus { outline: none; background-color: #fff; border-bottom: 2px solid blue; }
+    .price-label { margin-left: 5px; color: blue; font-weight: bold; font-size: 0.8em; display: block; }
+
+    /* 버튼 스타일 */
+    .btn {
+      padding: 8px 15px;
+      font-size: 14px;
+      cursor: pointer;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background-color: #fff;
+      transition: all 0.2s;
+      margin-right: 5px;
+    }
+    .btn:hover { background-color: #eee; }
+    .btn-primary { background-color: #007bff; color: white; border: none; }
+    .btn-primary:hover { background-color: #0056b3; }
+    .btn-danger { background-color: #fff; color: #dc3545; border: 1px solid #dc3545; }
+    .btn-danger:hover { background-color: #dc3545; color: white; }
+    #transaction-button { background-color: #ffcccc; border: 1px solid #ff9999; }
+    #transaction-button:hover { background-color: #ff9999; }
+
+    /* 페이지네이션 스타일 */
+    .pagination-container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #f8f9fa;
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .page-controls { display: flex; align-items: center; gap: 5px; }
+    .page-btn {
+      width: 35px; height: 35px;
+      border: 1px solid #ddd;
+      background: white;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: bold; color: #555;
+    }
+    .page-btn.active { background-color: #007bff; color: white; border-color: #007bff; }
+    .page-btn:hover:not(.active) { background-color: #e9ecef; }
+    .page-action-btn { font-size: 14px; padding: 0 12px; height: 35px; }
+
+    .ratio-box {
+      margin-top: 20px;
+      font-size: 16px;
+      padding: 10px;
+      background: #f5f5f5;
+      border-radius: 8px;
+      width: 380px;
+    }
+    
+    .loading-overlay { opacity: 0.5; pointer-events: none; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+  <div style="display:flex; justify-content:space-between; align-items:center;">
+    <h3>📈 주식 종목 데이터 및 변곡점 분석</h3>
+    <div>
+      <button id="load-button" class="btn btn-primary"><i class="fas fa-sync-alt"></i> 데이터 불러오기</button>
+      <button id="transaction-button" class="btn"><i class="fas fa-file-invoice-dollar"></i> 매매기록</button>
+    </div>
+  </div>
+  
+  <div style="margin-top:5px; font-size:14px; color:#666; margin-bottom: 15px;">
+    * 표의 종목명(예: GOOGL)을 클릭하여 변경 가능. 빈 칸에 종목을 입력하면 추가됩니다.
+  </div>
+
+  <div class="pagination-container">
+    <div class="page-controls" id="pagination-numbers"></div>
+    <div class="page-controls">
+      <button class="btn page-action-btn" onclick="addNewPage()" title="새 페이지 추가">
+        <i class="fas fa-plus"></i> 페이지 추가
+      </button>
+      <button class="btn page-action-btn btn-danger" onclick="deleteCurrentPage()" title="현재 페이지 삭제">
+        <i class="fas fa-trash-alt"></i> 페이지 삭제
+      </button>
+    </div>
+  </div>
+
+  <div id="table-container">
+    <table id="stock-table">
+      <thead>
+        <tr>
+          <th style="width: 120px;">날짜/구분</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <h3>기준가격 및 가격 레벨 비교표</h3>
+    <table id="price-table">
+      <thead>
+        <tr id="symbols-row"></tr>
+        <tr id="base-price-row"></tr>
+      </thead>
+      <tbody id="price-level-rows"></tbody>
+    </table>
+  </div>
+
+  <script>
+    // [설정]
+    const INFLECTION_THRESHOLD = 0.02; 
+    const DAYS_TO_SHOW = 25; 
+    const decrementRate = 0.025;
+    const decrementRows = 15;
+    const ITEMS_PER_PAGE = 9; 
+    
+    const STORAGE_KEY_PRICES = 'stockBasePrices';
+    const STORAGE_KEY_SYMBOLS = 'stockSymbols_v3';
+    const STORAGE_KEY_CUR_PAGE = 'stockCurrentPage';
+
+    const defaultSymbols = ['GOOGL', 'SPYM', 'AAPL', 'NVDA', 'AMD', 'UEC', 'AMZN', 'TSLA', 'MSFT'];
+    
+    let symbols = [];
+    let basePrices = {};
+    let allStockData = {}; 
+    
+    // [데이터 저장소] - PER, Beta 제거됨
+    let latest52Highs = {}; 
+    let latest52Lows = {};  
+
+    let latestClosePrices = {};
+    let currentPage = 1;
+
+    function loadSettings() {
+      const storedSymbols = localStorage.getItem(STORAGE_KEY_SYMBOLS);
+      if (storedSymbols) {
+        try { symbols = JSON.parse(storedSymbols); } catch (e) { symbols = [...defaultSymbols]; }
+      } else {
+        symbols = [...defaultSymbols];
+      }
+
+      const remainder = symbols.length % ITEMS_PER_PAGE;
+      if (remainder !== 0) {
+        const fillCount = ITEMS_PER_PAGE - remainder;
+        for(let i=0; i<fillCount; i++) symbols.push("");
+      }
+
+      const storedPage = localStorage.getItem(STORAGE_KEY_CUR_PAGE);
+      if (storedPage) currentPage = parseInt(storedPage);
+      const maxPage = Math.max(1, Math.ceil(symbols.length / ITEMS_PER_PAGE));
+      if (currentPage > maxPage) currentPage = maxPage;
+      if (currentPage < 1) currentPage = 1;
+
+      defaultSymbols.forEach(s => basePrices[s] = 0);
+      const initialDefaults = {
+        'AAPL': 256.87, 'SPYM': 78.68, 'MSFT': 514.45,
+        'GOOGL': 125.30, 'AMD': 161.27, 'UEC': 13.50, 'NVDA': 135.00
+      };
+      Object.assign(basePrices, initialDefaults);
+
+      const storedPrices = localStorage.getItem(STORAGE_KEY_PRICES);
+      if (storedPrices) {
+        try {
+          const parsed = JSON.parse(storedPrices);
+          Object.assign(basePrices, parsed);
+        } catch (e) {}
+      }
+    }
+
+    function saveSymbols() { localStorage.setItem(STORAGE_KEY_SYMBOLS, JSON.stringify(symbols)); }
+    function saveBasePrices() { localStorage.setItem(STORAGE_KEY_PRICES, JSON.stringify(basePrices)); }
+    function saveCurrentPage() { localStorage.setItem(STORAGE_KEY_CUR_PAGE, currentPage); }
+
+    function getTotalPages() { return Math.max(1, Math.ceil(symbols.length / ITEMS_PER_PAGE)); }
+
+    function changePage(pageNum) {
+      if (pageNum < 1 || pageNum > getTotalPages()) return;
+      currentPage = pageNum;
+      saveCurrentPage();
+      renderAll();
+    }
+
+    function addNewPage() {
+      for (let i = 0; i < ITEMS_PER_PAGE; i++) symbols.push("");
+      saveSymbols();
+      changePage(getTotalPages());
+    }
+
+    function deleteCurrentPage() {
+      const total = getTotalPages();
+      if (total <= 1) { alert("최소 한 페이지는 존재해야 합니다."); return; }
+      if (!confirm(`${currentPage}페이지를 삭제하시겠습니까?`)) return;
+
+      const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+      symbols.splice(startIndex, ITEMS_PER_PAGE);
+      saveSymbols();
+
+      if (currentPage > getTotalPages()) currentPage = getTotalPages();
+      saveCurrentPage();
+      renderAll();
+    }
+
+    function renderPagination() {
+      const container = document.getElementById('pagination-numbers');
+      container.innerHTML = '';
+      const totalPages = getTotalPages();
+
+      const prevBtn = document.createElement('button');
+      prevBtn.className = 'page-btn';
+      prevBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
+      prevBtn.onclick = () => changePage(currentPage - 1);
+      if (currentPage === 1) prevBtn.style.opacity = 0.5;
+      container.appendChild(prevBtn);
+
+      for (let i = 1; i <= totalPages; i++) {
+        const btn = document.createElement('button');
+        btn.className = `page-btn ${i === currentPage ? 'active' : ''}`;
+        btn.textContent = i;
+        btn.onclick = () => changePage(i);
+        container.appendChild(btn);
+      }
+
+      const nextBtn = document.createElement('button');
+      nextBtn.className = 'page-btn';
+      nextBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
+      nextBtn.onclick = () => changePage(currentPage + 1);
+      if (currentPage === totalPages) nextBtn.style.opacity = 0.5;
+      container.appendChild(nextBtn);
+    }
+
+    // ---------------------------------------------------------
+    // API 데이터 로직 (간소화됨: Chart API만 사용)
+    // ---------------------------------------------------------
+    async function fetchSymbolData(symbol) {
+      if (!symbol) return { history: null, high52: null, low52: null };
+
+      // Chart API만 호출 (가격 히스토리 + 메타데이터의 52주 정보)
+      const chartUrl = `https://corsproxy.io/?https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=3mo`;
+      
+      let chartData;
+      try {
+        const chartRes = await fetch(chartUrl);
+        if (!chartRes.ok) throw new Error("Chart network error");
+        chartData = await chartRes.json();
+      } catch (e) {
+        console.error(`Fetch failed for ${symbol}`, e);
+        throw e;
+      }
+
+      // --- 파싱 로직 ---
+      if (!chartData.chart || !chartData.chart.result || chartData.chart.result.length === 0) {
+          throw new Error("No chart data");
+      }
+      const result = chartData.chart.result[0];
+      const timestamps = result.timestamp;
+      const quotes = result.indicators.quote[0];
+      
+      const closePrices = {};
+      if (timestamps && quotes.close) {
+        timestamps.forEach((ts, index) => {
+          if (quotes.close[index] !== null) {
+            const date = new Date(ts * 1000).toISOString().split('T')[0];
+            closePrices[date] = parseFloat(quotes.close[index]);
+          }
+        });
+      }
+
+      // 52주 최고/최저는 차트 데이터(meta)에서 가져옴
+      let high52 = null, low52 = null;
+      if (result.meta) {
+          if (result.meta.fiftyTwoWeekHigh) high52 = result.meta.fiftyTwoWeekHigh;
+          if (result.meta.fiftyTwoWeekLow) low52 = result.meta.fiftyTwoWeekLow;
+      }
+
+      return { history: closePrices, high52: high52, low52: low52 };
+    }
+
+    async function fetchAllStockData() {
+      const validSymbols = symbols.filter(s => s !== "");
+      
+      const promises = validSymbols.map(async (sym) => {
+        try {
+          const { history, high52, low52 } = await fetchSymbolData(sym);
+          
+          if(history) allStockData[sym] = history;
+          
+          latest52Highs[sym] = high52;
+          latest52Lows[sym] = low52;
+
+        } catch (e) {
+          console.error(`Error fetching ${sym}:`, e);
+          allStockData[sym] = {}; 
+          latest52Highs[sym] = null;
+          latest52Lows[sym] = null;
+        }
+      });
+      
+      await Promise.all(promises);
+    }
+
+    async function handleTickerChange(globalIndex, newTicker) {
+      newTicker = newTicker.toUpperCase().trim();
+      const oldTicker = symbols[globalIndex];
+
+      if (newTicker === oldTicker) return;
+      if (newTicker !== "" && symbols.includes(newTicker)) {
+        alert("이미 존재하는 종목입니다.");
+        renderAll(); 
+        return;
+      }
+
+      if (newTicker === "") {
+        symbols[globalIndex] = "";
+        saveSymbols();
+        renderAll();
+        return;
+      }
+
+      try {
+        const inputEls = document.querySelectorAll('.ticker-input');
+        const localIndex = globalIndex % ITEMS_PER_PAGE;
+        if(inputEls[localIndex]) inputEls[localIndex].style.color = '#999';
+
+        const { history, high52, low52 } = await fetchSymbolData(newTicker);
+        
+        symbols[globalIndex] = newTicker;
+        saveSymbols();
+
+        if (oldTicker && allStockData[oldTicker]) delete allStockData[oldTicker];
+        allStockData[newTicker] = history;
+        latest52Highs[newTicker] = high52;
+        latest52Lows[newTicker] = low52;
+
+        basePrices[newTicker] = 0;
+        const dates = Object.keys(history).sort((a, b) => b.localeCompare(a));
+        if (dates.length > 0) {
+          basePrices[newTicker] = parseFloat(history[dates[0]].toFixed(2));
+          alert(`[${newTicker}] 추가 완료.\n현재가: ${basePrices[newTicker]}`);
+        }
+        saveBasePrices();
+        renderAll();
+
+      } catch (e) {
+        alert(`'${newTicker}' 정보를 가져올 수 없습니다.`);
+        renderAll();
+      }
+    }
+
+    function getLatestInflectionPoint(pricesObj, threshold) {
+      if (!pricesObj) return null;
+      const dates = Object.keys(pricesObj).sort(); 
+      if (dates.length < 2) return null;
+
+      let startIndex = 0;
+      let startPrice = pricesObj[dates[0]];
+      let currentTrend = null; 
+      
+      for (let i = 1; i < dates.length; i++) {
+        const p = pricesObj[dates[i]];
+        const change = (p - startPrice) / startPrice;
+        if (Math.abs(change) >= threshold) {
+          currentTrend = change > 0 ? 'UP' : 'DOWN';
+          startIndex = i;
+          break;
+        }
+      }
+      if (!currentTrend) return null;
+
+      let lastPivot = { type: currentTrend === 'UP' ? 'LOW' : 'HIGH', price: startPrice, date: dates[0] };
+      let tempExtremePrice = startPrice;
+      let tempExtremeDate = dates[0];
+
+      for (let i = 0; i < dates.length; i++) {
+        const date = dates[i];
+        const price = pricesObj[date];
+        if (currentTrend === 'UP') {
+          if (price > tempExtremePrice) { tempExtremePrice = price; tempExtremeDate = date; }
+          else if (price < tempExtremePrice * (1 - threshold)) {
+            lastPivot = { type: 'HIGH', price: tempExtremePrice, date: tempExtremeDate };
+            currentTrend = 'DOWN';
+            tempExtremePrice = price; tempExtremeDate = date;
+          }
+        } else { 
+          if (price < tempExtremePrice) { tempExtremePrice = price; tempExtremeDate = date; }
+          else if (price > tempExtremePrice * (1 + threshold)) {
+            lastPivot = { type: 'LOW', price: tempExtremePrice, date: tempExtremeDate };
+            currentTrend = 'UP';
+            tempExtremePrice = price; tempExtremeDate = date;
+          }
+        }
+      }
+      return lastPivot;
+    }
+
+    function renderAll() {
+      renderPagination();
+      renderStockTable();
+      renderBasePriceTableHeader();
+      renderPriceLevelsTable();
+    }
+
+    function getCurrentPageSymbols() {
+      const start = (currentPage - 1) * ITEMS_PER_PAGE;
+      const end = start + ITEMS_PER_PAGE;
+      return symbols.slice(start, end).map((sym, i) => ({
+        symbol: sym,
+        globalIndex: start + i
+      }));
+    }
+
+    function renderStockTable() {
+      const pageSymbols = getCurrentPageSymbols();
+      const theadRow = document.querySelector('#stock-table thead tr');
+      theadRow.innerHTML = ''; 
+
+      const thLabel = document.createElement('th');
+      thLabel.textContent = '날짜/구분';
+      theadRow.appendChild(thLabel);
+
+      pageSymbols.forEach((item) => {
+        const th = document.createElement('th');
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'ticker-input';
+        input.value = item.symbol;
+        input.placeholder = "입력";
+        input.onchange = (e) => handleTickerChange(item.globalIndex, e.target.value);
+        th.appendChild(input);
+        theadRow.appendChild(th);
+      });
+
+      const tbody = document.querySelector('#stock-table tbody');
+      tbody.innerHTML = '';
+      
+      const highestPrices = {};
+      const lowestPrices = {};
+
+      pageSymbols.forEach(item => {
+        const sym = item.symbol;
+        if (!sym) return; 
+        const data = allStockData[sym];
+        if (data && Object.keys(data).length > 0) {
+            const prices = Object.values(data);
+            highestPrices[sym] = Math.max(...prices);
+            lowestPrices[sym] = Math.min(...prices);
+            const dates = Object.keys(data).sort((a, b) => b.localeCompare(a));
+            latestClosePrices[sym] = data[dates[0]];
+        } else {
+            highestPrices[sym] = 0; lowestPrices[sym] = 0; latestClosePrices[sym] = 0;
+        }
+      });
+
+      const createRow = (className, label) => {
+        const tr = document.createElement('tr');
+        tr.className = className;
+        const td = document.createElement('td');
+        td.textContent = label;
+        tr.appendChild(td);
+        return tr;
+      };
+
+      // [수정] 52주 고저 행만 남기고 나머지(PER, Beta) 삭제
+      const row52High = createRow('price-val-row', '52주 최고');
+      const row52Low = createRow('price-val-row', '52주 최저');
+
+      // 기존 통계 행
+      const rowRisePct = createRow('rise-row', '저점 대비 상승');
+      const rowLowVal = createRow('price-val-row', '저점값');
+      const rowDropPct = createRow('fall-row', '고점 대비 하락');
+      const rowHighVal = createRow('price-val-row', '고점값');
+      const rowReboundPct = createRow('rise-row', '상승반전');
+      const rowReboundVal = createRow('price-val-row', '상승전환값');
+      const rowPullbackPct = createRow('fall-row', '하락반전');
+      const rowPullbackVal = createRow('price-val-row divider-row', '하락전환값');
+
+      pageSymbols.forEach(item => {
+        const sym = item.symbol;
+        if (!sym) {
+           [row52High, row52Low, rowRisePct, rowLowVal, rowDropPct, rowHighVal, rowReboundPct, rowReboundVal, rowPullbackPct, rowPullbackVal]
+           .forEach(r => r.innerHTML += '<td></td>');
+           return;
+        }
+
+        const h52 = latest52Highs[sym];
+        const l52 = latest52Lows[sym];
+
+        row52High.innerHTML += `<td>${h52 ? h52.toFixed(2) : '-'}</td>`;
+        row52Low.innerHTML += `<td>${l52 ? l52.toFixed(2) : '-'}</td>`;
+
+        const current = latestClosePrices[sym];
+        const low = lowestPrices[sym];
+        const high = highestPrices[sym];
+        const inflection = getLatestInflectionPoint(allStockData[sym], INFLECTION_THRESHOLD);
+
+        if (current && low) {
+            rowRisePct.innerHTML += `<td>+${(((current - low) / low) * 100).toFixed(2)}%</td>`;
+            rowLowVal.innerHTML += `<td>${low.toFixed(2)}</td>`;
+        } else {
+            rowRisePct.innerHTML += '<td>-</td>'; rowLowVal.innerHTML += '<td>-</td>';
+        }
+
+        if (current && high) {
+            rowDropPct.innerHTML += `<td>${(((current - high) / high) * 100).toFixed(2)}%</td>`;
+            rowHighVal.innerHTML += `<td>${high.toFixed(2)}</td>`;
+        } else {
+            rowDropPct.innerHTML += '<td>-</td>'; rowHighVal.innerHTML += '<td>-</td>';
+        }
+
+        let rebPct = '-', rebVal = '-', pullPct = '-', pullVal = '-';
+        if (inflection && current) {
+          if (inflection.type === 'LOW') {
+            rebPct = `+${((current - inflection.price)/inflection.price*100).toFixed(2)}%`;
+            rebVal = inflection.price.toFixed(2);
+          } else if (inflection.type === 'HIGH') {
+            pullPct = `${((current - inflection.price)/inflection.price*100).toFixed(2)}%`;
+            pullVal = inflection.price.toFixed(2);
+          }
+        }
+        rowReboundPct.innerHTML += `<td>${rebPct}</td>`;
+        rowReboundVal.innerHTML += `<td>${rebVal}</td>`;
+        rowPullbackPct.innerHTML += `<td>${pullPct}</td>`;
+        rowPullbackVal.innerHTML += `<td>${pullVal}</td>`;
+      });
+
+      // [수정] 테이블에 추가하는 순서에서 제거된 변수 제외
+      tbody.append(row52High, row52Low,
+                   rowRisePct, rowLowVal, rowDropPct, rowHighVal, rowReboundPct, rowReboundVal, rowPullbackPct, rowPullbackVal);
+
+      const datesSet = new Set();
+      symbols.forEach(sym => {
+        if(sym && allStockData[sym]) Object.keys(allStockData[sym]).forEach(d => datesSet.add(d));
+      });
+      const dates = Array.from(datesSet).sort((a, b) => b.localeCompare(a)).slice(0, DAYS_TO_SHOW);
+
+      dates.forEach(date => {
+        const tr = document.createElement('tr');
+        let rowHtml = `<td>${date}</td>`;
+        pageSymbols.forEach(item => {
+          const sym = item.symbol;
+          if (!sym) { rowHtml += '<td></td>'; return; }
+
+          const price = allStockData[sym] ? allStockData[sym][date] : undefined;
+          if (price !== undefined) {
+            rowHtml += price === highestPrices[sym]
+              ? `<td class="highest">${price.toFixed(2)}</td>`
+              : `<td>${price.toFixed(2)}</td>`;
+          } else {
+            rowHtml += '<td>-</td>';
+          }
+        });
+        tr.innerHTML = rowHtml;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderBasePriceTableHeader() {
+      const pageSymbols = getCurrentPageSymbols();
+      const symbolsRow = document.getElementById('symbols-row');
+      const basePriceRow = document.getElementById('base-price-row');
+      
+      symbolsRow.innerHTML = '<th></th>';
+      basePriceRow.innerHTML = '<td>기준가격</td>';
+
+      pageSymbols.forEach(item => {
+        const sym = item.symbol;
+        const th = document.createElement('th');
+        th.textContent = sym || "(비어있음)";
+        symbolsRow.appendChild(th);
+
+        const td = document.createElement('td');
+        if (sym) {
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.step = '0.01';
+            input.value = parseFloat(basePrices[sym] || 0).toFixed(2);
+            input.addEventListener('change', () => {
+              const val = parseFloat(input.value);
+              if (!isNaN(val)) {
+                basePrices[sym] = val;
+                saveBasePrices();
+                renderPriceLevelsTable();
+              }
+            });
+            td.appendChild(input);
+        }
+        basePriceRow.appendChild(td);
+      });
+    }
+
+    function renderPriceLevelsTable() {
+      const pageSymbols = getCurrentPageSymbols();
+      const tbody = document.getElementById('price-level-rows');
+      tbody.innerHTML = '';
+
+      for (let i = 0; i < decrementRows; i++) {
+        const tr = document.createElement('tr');
+        const labelTd = document.createElement('td');
+        labelTd.textContent = (100 - decrementRate * i * 100).toFixed(2) + '% 기준가';
+        tr.appendChild(labelTd);
+
+        pageSymbols.forEach(item => {
+          const sym = item.symbol;
+          const td = document.createElement('td');
+          if (sym) {
+              const levelPrice = (basePrices[sym] || 0) * (1 - decrementRate * i);
+              td.textContent = levelPrice.toFixed(2);
+              const closePrice = latestClosePrices[sym];
+              if (closePrice && closePrice < levelPrice) {
+                const span = document.createElement('span');
+                span.className = 'price-label';
+                span.textContent = closePrice.toFixed(2);
+                td.appendChild(span);
+              }
+          }
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      }
+    }
+
+    async function onLoadButtonClick() {
+      const btn = document.getElementById('load-button');
+      const container = document.getElementById('table-container');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 로딩 중...';
+      container.classList.add('loading-overlay');
+      
+      await fetchAllStockData();
+      
+      let pricesUpdated = false;
+      symbols.forEach(sym => {
+        if (!sym) return;
+        const data = allStockData[sym];
+        if (data) {
+            const dates = Object.keys(data).sort((a,b)=>b.localeCompare(a));
+            const latest = data[dates[0]];
+            if (latest) {
+                if (basePrices[sym] === 0 || latest > basePrices[sym]) {
+                    basePrices[sym] = parseFloat(latest.toFixed(2));
+                    pricesUpdated = true;
+                }
+            }
+        }
+      });
+      if (pricesUpdated) saveBasePrices();
+
+      renderAll();
+      
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-sync-alt"></i> 데이터 불러오기';
+      container.classList.remove('loading-overlay');
+    }
+
+    function goToTransactionPage() {
+      if (Object.keys(latestClosePrices).length === 0) {
+          alert("주가 정보가 없습니다. 먼저 '데이터 불러오기'를 실행해주세요.");
+          return;
+      }
+      localStorage.setItem('latestPrices', JSON.stringify(latestClosePrices));
+      window.location.href = 'https://jcmyys.infinityfree.me/AssetDonut2/transaction.php';
+    }
+
+    function init() {
+      loadSettings();
+      renderAll();
+    }
+
+    document.getElementById('load-button').addEventListener('click', onLoadButtonClick);
+    document.getElementById('transaction-button').addEventListener('click', goToTransactionPage);
+    
+    init();
+  </script>
+
+  <h3>🇺🇸 미국 시가총액 1~4위 한달간 변화</h3>
+  <div id="desc"></div>
+  <canvas id="marketCapChart" width="720" height="340"></canvas>
+  <div class="ratio-box" id="ratios"></div>
+  <script>
+    const symbols2 = ['NVDA', 'MSFT', 'AAPL', 'GOOGL'];
+    const names = ['NVIDIA', 'Microsoft', 'Apple', 'Alphabet'];
+    const shares = { 'NVDA': 24300000000, 'MSFT': 7430000000, 'AAPL': 14860000000, 'GOOGL': 12038760000 };
+    const dtEnd = Math.floor(Date.now()/1000);
+    const dtStart = dtEnd - (60*60*24*30);
+
+    async function fetchHistory(symbol) {
+      const url = `https://corsproxy.io/?https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${dtStart}&period2=${dtEnd}&interval=1d`;
+      try {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error("Chart fetch failed");
+        const j = await r.json();
+        const timestamps = j.chart.result[0].timestamp;
+        const closes = j.chart.result[0].indicators.adjclose[0].adjclose;
+        const dates = timestamps.map(ts => new Date(ts * 1000).toISOString().slice(0,10));
+        const marketCaps = closes.map(close => +(close * shares[symbol] / 1e12).toFixed(2));
+        return {dates, marketCaps};
+      } catch(e) { console.error(e); return {dates:[], marketCaps:[]}; }
+    }
+
+    async function main() {
+      const res = await Promise.all(symbols2.map(fetchHistory));
+      if(!res[0] || res[0].dates.length === 0) return;
+      const labels = res[0].dates;
+      const s1 = res[0].marketCaps, s2 = res[1].marketCaps, s3 = res[2].marketCaps, s4 = res[3].marketCaps;
+      const n = labels.length - 1;
+      const latestCaps = [
+          {name: names[0], cap: s1[n]}, {name: names[1], cap: s2[n]},
+          {name: names[2], cap: s3[n]}, {name: names[3], cap: s4[n]}
+      ].sort((a,b)=>b.cap-a.cap);
+
+      new Chart(document.getElementById('marketCapChart'), {
+          type: 'line',
+          data: {
+              labels: labels,
+              datasets: [
+                  { label: names[0], data: s1, borderColor: 'rgb(60,180,75)', fill: false, tension: 0.25 },
+                  { label: names[1], data: s2, borderColor: 'rgb(0,130,200)', fill: false, tension: 0.25 },
+                  { label: names[2], data: s3, borderColor: 'rgb(245,130,48)', fill: false, tension: 0.25 },
+                  { label: names[3], data: s4, borderColor: 'rgb(145,30,180)', fill: false, tension: 0.25 }
+              ]
+          },
+          options: {
+              responsive: false,
+              plugins: { legend: { position: 'top' } },
+              scales: { y: { title: { display: true, text: '시가총액 (Trillion USD)' } } }
+          }
+      });
+      document.getElementById('desc').innerHTML = `${labels[0]} ~ ${labels[n]} 기준 데이터 (단위: Trillion USD)`;
+      document.getElementById('ratios').innerHTML = `
+          <strong>실시간 시총 기준</strong><br>
+          1등: ${latestCaps[0].name} (${latestCaps[0].cap}조)<br>
+          2등: ${latestCaps[1].name} (${latestCaps[1].cap}조)<br>
+          3등: ${latestCaps[2].name} (${latestCaps[2].cap}조)<br>
+          4등: ${latestCaps[3].name} (${latestCaps[3].cap}조)<br><br>
+          ${latestCaps[0].name} / ${latestCaps[1].name} = <b>${(latestCaps[0].cap / latestCaps[1].cap).toFixed(2)}</b><br>
+          ${latestCaps[1].name} / ${latestCaps[2].name} = <b>${(latestCaps[1].cap / latestCaps[2].cap).toFixed(2)}</b>
+      `;
+    }
+    main();
+  </script>
+</body>
+</html>
