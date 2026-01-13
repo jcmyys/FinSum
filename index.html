@@ -104,7 +104,11 @@
     .loading-overlay { opacity: 0.5; pointer-events: none; }
     
     .chart-button { background-color: #28a745; color: white; }
-    .chart-button:hover { background-color: #218838; }  
+    .chart-button:hover { background-color: #218838; }
+    
+    /* 추가: Trend 차트 버튼 스타일 (보라색 계열) */
+    .trend-button { background-color: #6f42c1; color: white; border: none; }
+    .trend-button:hover { background-color: #59359a; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -114,6 +118,8 @@
     <h3>📈 주식 종목 데이터 및 변곡점 분석</h3>
     <div>
       <button id="load-button" class="btn btn-primary"><i class="fas fa-sync-alt"></i> 데이터 불러오기</button>
+      <button id="trend-button" class="btn trend-button"><i class="fas fa-chart-area"></i> Trend 차트</button>
+      
       <button id="top-button" class="btn chart-button"><i class="fas fa-chart-line"></i> Top 차트</button>
       <button id="transaction-button" class="btn"><i class="fas fa-file-invoice-dollar"></i> 매매기록</button>
     </div>
@@ -173,7 +179,6 @@
     let basePrices = {};
     let allStockData = {}; 
     
-    // [데이터 저장소] - PER, Beta 제거됨
     let latest52Highs = {}; 
     let latest52Lows = {};  
 
@@ -277,13 +282,8 @@
       container.appendChild(nextBtn);
     }
 
-    // ---------------------------------------------------------
-    // API 데이터 로직 (간소화됨: Chart API만 사용)
-    // ---------------------------------------------------------
     async function fetchSymbolData(symbol) {
       if (!symbol) return { history: null, high52: null, low52: null };
-
-      // Chart API만 호출 (가격 히스토리 + 메타데이터의 52주 정보)
       const chartUrl = `https://corsproxy.io/?https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=3mo`;
       
       let chartData;
@@ -296,7 +296,6 @@
         throw e;
       }
 
-      // --- 파싱 로직 ---
       if (!chartData.chart || !chartData.chart.result || chartData.chart.result.length === 0) {
           throw new Error("No chart data");
       }
@@ -314,7 +313,6 @@
         });
       }
 
-      // 52주 최고/최저는 차트 데이터(meta)에서 가져옴
       let high52 = null, low52 = null;
       if (result.meta) {
           if (result.meta.fiftyTwoWeekHigh) high52 = result.meta.fiftyTwoWeekHigh;
@@ -508,11 +506,9 @@
         return tr;
       };
 
-      // [수정] 52주 고저 행만 남기고 나머지(PER, Beta) 삭제
       const row52High = createRow('price-val-row', '52주 최고');
       const row52Low = createRow('price-val-row', '52주 최저');
 
-      // 기존 통계 행
       const rowRisePct = createRow('rise-row', '저점 대비 상승');
       const rowLowVal = createRow('price-val-row', '저점값');
       const rowDropPct = createRow('fall-row', '고점 대비 하락');
@@ -571,7 +567,6 @@
         rowPullbackVal.innerHTML += `<td>${pullVal}</td>`;
       });
 
-      // [수정] 테이블에 추가하는 순서에서 제거된 변수 제외
       tbody.append(row52High, row52Low,
                    rowRisePct, rowLowVal, rowDropPct, rowHighVal, rowReboundPct, rowReboundVal, rowPullbackPct, rowPullbackVal);
 
@@ -717,6 +712,8 @@
     document.getElementById('load-button').addEventListener('click', onLoadButtonClick);
     document.getElementById('transaction-button').addEventListener('click', goToTransactionPage);
     document.getElementById('top-button').addEventListener('click', function() {window.location.href = 'top_chart.html';});
+    // [추가된 이벤트 리스너]
+    document.getElementById('trend-button').addEventListener('click', function() {window.location.href = 'trend.html';});
     
     init();
   </script>

@@ -7,7 +7,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 20px; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
-        .container { width: 100%; max-width: 1200px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .container { width: 100%; max-width: 1200px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); position: relative; }
         
         .controls { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
         input[type="text"] { padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; flex-grow: 1; text-transform: uppercase; }
@@ -21,12 +21,43 @@
 
         .chart-container { position: relative; height: 60vh; width: 100%; }
         #statusMessage { text-align: center; margin-bottom: 10px; font-size: 14px; height: 20px; }
+
+        /* [수정됨] 네비게이션 버튼 스타일 그룹화 */
+        .nav-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .nav-buttons { display: flex; gap: 8px; } /* 버튼 간격 */
+        
+        .nav-btn { 
+            padding: 8px 16px; 
+            color: white; 
+            border: none; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            font-size: 14px; 
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+        
+        /* 홈 버튼 색상 (회색) */
+        .home-btn { background: #6c757d; }
+        .home-btn:hover { background: #5a6268; }
+
+        /* Top 차트 버튼 색상 (초록색) */
+        .top-btn { background: #28a745; }
+        .top-btn:hover { background: #218838; }
+
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h2 style="margin-top:0;">📈 주식 수익률 비교</h2>
+        <div class="nav-header">
+            <h2 style="margin:0;">📈 주식 수익률 비교</h2>
+            <div class="nav-buttons">
+                <button class="nav-btn top-btn" onclick="window.location.href='top_chart.html'">🏆 Top 차트</button>
+                <button class="nav-btn home-btn" onclick="window.location.href='index.html'">🏠 메인으로</button>
+            </div>
+        </div>
+        
         <p style="font-size: 0.9em; color: #666;">차트 선이나 <b>상단 범례(이름)</b>에 마우스를 올려보세요.</p>
         
         <div class="controls">
@@ -170,12 +201,11 @@
                     data: data,
                     borderColor: color,
                     backgroundColor: color,
-                    borderWidth: 2, // 기본 두께
+                    borderWidth: 2, 
                     pointRadius: 0,
-                    pointHoverRadius: 0, // 점 강조 제거 (선 강조에 집중)
+                    pointHoverRadius: 0, 
                     tension: 0.3,
                     fill: false,
-                    // ★ 핵심 1: 차트 내부 호버 시 선 두께 설정
                     hoverBorderWidth: 8 
                 };
             });
@@ -195,14 +225,13 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    // ★ 핵심 2: 호버 모드 설정 (데이터셋 전체 강조)
                     interaction: {
                         mode: 'nearest', 
                         axis: 'x',
                         intersect: false
                     },
                     hover: {
-                        mode: 'dataset', // 마우스를 올리면 해당 '데이터셋(선)' 전체가 활성화됨
+                        mode: 'dataset', 
                         intersect: false
                     },
                     plugins: {
@@ -214,22 +243,17 @@
                                 usePointStyle: false,
                                 font: { size: 12 }
                             },
-                            // ★ 핵심 3: 범례(Legend) 호버 이벤트 핸들러
                             onHover: function(e, legendItem, legend) {
                                 const index = legendItem.datasetIndex;
                                 const ci = legend.chart;
-                                
-                                // 해당 데이터셋의 두께를 임시로 8로 변경
                                 if (ci.isDatasetVisible(index)) {
                                     ci.data.datasets[index].borderWidth = 8;
-                                    ci.update('none'); // 애니메이션 없이 즉시 갱신 (반응 속도 향상)
+                                    ci.update('none'); 
                                 }
                             },
                             onLeave: function(e, legendItem, legend) {
                                 const index = legendItem.datasetIndex;
                                 const ci = legend.chart;
-                                
-                                // 두께를 원래대로(2) 복구
                                 ci.data.datasets[index].borderWidth = 2;
                                 ci.update('none');
                             }
