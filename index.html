@@ -102,6 +102,9 @@
     }
     
     .loading-overlay { opacity: 0.5; pointer-events: none; }
+    
+    .chart-button { background-color: #28a745; color: white; }
+    .chart-button:hover { background-color: #218838; }  
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -111,6 +114,7 @@
     <h3>📈 주식 종목 데이터 및 변곡점 분석</h3>
     <div>
       <button id="load-button" class="btn btn-primary"><i class="fas fa-sync-alt"></i> 데이터 불러오기</button>
+      <button id="top-button" class="btn chart-button"><i class="fas fa-chart-line"></i> Top 차트</button>
       <button id="transaction-button" class="btn"><i class="fas fa-file-invoice-dollar"></i> 매매기록</button>
     </div>
   </div>
@@ -712,6 +716,7 @@
 
     document.getElementById('load-button').addEventListener('click', onLoadButtonClick);
     document.getElementById('transaction-button').addEventListener('click', goToTransactionPage);
+    document.getElementById('top-button').addEventListener('click', function() {window.location.href = 'top_chart.html';});
     
     init();
   </script>
