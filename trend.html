@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>주식 수익률 비교 (강력한 강조 효과)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 20px; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+        .container { width: 100%; max-width: 1200px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        
+        .controls { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        input[type="text"] { padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; flex-grow: 1; text-transform: uppercase; }
+        button.add-btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; transition: background 0.2s; }
+        button.add-btn:hover { background: #0056b3; }
+
+        .symbol-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+        .tag { background: #e9ecef; padding: 6px 12px; border-radius: 20px; display: flex; align-items: center; gap: 8px; font-size: 14px; color: #495057; font-weight: 500; }
+        .tag span { cursor: pointer; color: #dc3545; font-weight: bold; padding: 0 4px; }
+        .tag span:hover { color: #a71d2a; }
+
+        .chart-container { position: relative; height: 60vh; width: 100%; }
+        #statusMessage { text-align: center; margin-bottom: 10px; font-size: 14px; height: 20px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2 style="margin-top:0;">📈 주식 수익률 비교</h2>
+        <p style="font-size: 0.9em; color: #666;">차트 선이나 <b>상단 범례(이름)</b>에 마우스를 올려보세요.</p>
+        
+        <div class="controls">
+            <input type="text" id="symbolInput" placeholder="종목 코드 입력 (예: TSLA)" onkeypress="handleEnter(event)">
+            <button class="add-btn" onclick="addSymbol()">추가</button>
+        </div>
+
+        <div class="symbol-list" id="symbolList"></div>
+        <div id="statusMessage"></div>
+
+        <div class="chart-container">
+            <canvas id="comparisonChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        let myChart = null;
+        let symbols = []; 
+        const STORAGE_KEY = 'my_stock_symbols_v4'; 
+        
+        const colors = [
+            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', 
+            '#2E86C1', '#28B463', '#D35400', '#884EA0', '#839192', '#F1C40F'
+        ];
+
+        window.onload = function() {
+            loadSymbols();
+            if (symbols.length === 0) {
+                symbols = ['NVDA', 'TSLA', 'AAPL'];
+                saveSymbols();
+            }
+            renderTags();
+            updateChart();
+        };
+
+        function loadSymbols() {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            if (stored) symbols = JSON.parse(stored);
+        }
+
+        function saveSymbols() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(symbols));
+        }
+
+        function handleEnter(e) { if (e.key === 'Enter') addSymbol(); }
+
+        function addSymbol() {
+            const input = document.getElementById('symbolInput');
+            const val = input.value.trim().toUpperCase();
+            if (!val) return;
+            if (symbols.includes(val)) {
+                showMessage('⚠️ 이미 존재하는 종목입니다.', 'orange');
+                input.value = '';
+                return;
+            }
+            symbols.push(val);
+            saveSymbols();
+            renderTags();
+            input.value = '';
+            updateChart();
+        }
+
+        function removeSymbol(symbol) {
+            symbols = symbols.filter(s => s !== symbol);
+            saveSymbols();
+            renderTags();
+            updateChart();
+        }
+
+        function renderTags() {
+            const container = document.getElementById('symbolList');
+            container.innerHTML = '';
+            symbols.forEach(sym => {
+                const div = document.createElement('div');
+                div.className = 'tag';
+                div.innerHTML = `${sym} <span onclick="removeSymbol('${sym}')">×</span>`;
+                container.appendChild(div);
+            });
+        }
+
+        function showMessage(msg, color='black') {
+            const el = document.getElementById('statusMessage');
+            el.style.color = color;
+            el.innerText = msg;
+        }
+
+        async function fetchStockData(symbol) {
+            const dtEnd = Math.floor(Date.now() / 1000);
+            const dtStart = dtEnd - (90 * 24 * 60 * 60); 
+            const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${dtStart}&period2=${dtEnd}&interval=1d`;
+            const url = 'https://corsproxy.io/?' + encodeURIComponent(yahooUrl);
+
+            try {
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('Error');
+                const json = await res.json();
+                const result = json.chart.result[0];
+                const timestamps = result.timestamp;
+                const closes = result.indicators.quote[0].close;
+
+                const validData = [];
+                const validDates = [];
+                closes.forEach((price, i) => {
+                    if (price) {
+                        validData.push(price);
+                        validDates.push(new Date(timestamps[i] * 1000).toISOString().slice(0, 10));
+                    }
+                });
+                return { symbol, dates: validDates, prices: validData };
+            } catch (e) {
+                console.error(e);
+                showMessage(`❌ ${symbol} 로드 실패`, 'red');
+                return null;
+            }
+        }
+
+        async function updateChart() {
+            if (symbols.length === 0) { if(myChart) myChart.destroy(); return; }
+            showMessage('⏳ 데이터를 불러오는 중...', '#007bff');
+
+            const results = await Promise.all(symbols.map(fetchStockData));
+            const validResults = results.filter(r => r !== null);
+
+            if (validResults.length === 0) { showMessage('데이터 없음', 'red'); return; }
+
+            const allDatesSet = new Set();
+            validResults.forEach(r => r.dates.forEach(d => allDatesSet.add(d)));
+            const sortedLabels = Array.from(allDatesSet).sort();
+
+            const datasets = validResults.map((r, index) => {
+                const basePrice = r.prices[0];
+                const data = sortedLabels.map(d => {
+                    const idx = r.dates.indexOf(d);
+                    return idx > -1 ? ((r.prices[idx] - basePrice) / basePrice) * 100 : null;
+                });
+
+                const color = colors[index % colors.length];
+
+                return {
+                    label: r.symbol,
+                    data: data,
+                    borderColor: color,
+                    backgroundColor: color,
+                    borderWidth: 2, // 기본 두께
+                    pointRadius: 0,
+                    pointHoverRadius: 0, // 점 강조 제거 (선 강조에 집중)
+                    tension: 0.3,
+                    fill: false,
+                    // ★ 핵심 1: 차트 내부 호버 시 선 두께 설정
+                    hoverBorderWidth: 8 
+                };
+            });
+
+            drawChart(sortedLabels, datasets);
+            showMessage('✅ 업데이트 완료', 'green');
+            setTimeout(() => showMessage(''), 2000);
+        }
+
+        function drawChart(labels, datasets) {
+            const ctx = document.getElementById('comparisonChart').getContext('2d');
+            if (myChart) myChart.destroy();
+
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    // ★ 핵심 2: 호버 모드 설정 (데이터셋 전체 강조)
+                    interaction: {
+                        mode: 'nearest', 
+                        axis: 'x',
+                        intersect: false
+                    },
+                    hover: {
+                        mode: 'dataset', // 마우스를 올리면 해당 '데이터셋(선)' 전체가 활성화됨
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                boxWidth: 40,
+                                padding: 20,
+                                usePointStyle: false,
+                                font: { size: 12 }
+                            },
+                            // ★ 핵심 3: 범례(Legend) 호버 이벤트 핸들러
+                            onHover: function(e, legendItem, legend) {
+                                const index = legendItem.datasetIndex;
+                                const ci = legend.chart;
+                                
+                                // 해당 데이터셋의 두께를 임시로 8로 변경
+                                if (ci.isDatasetVisible(index)) {
+                                    ci.data.datasets[index].borderWidth = 8;
+                                    ci.update('none'); // 애니메이션 없이 즉시 갱신 (반응 속도 향상)
+                                }
+                            },
+                            onLeave: function(e, legendItem, legend) {
+                                const index = legendItem.datasetIndex;
+                                const ci = legend.chart;
+                                
+                                // 두께를 원래대로(2) 복구
+                                ci.data.datasets[index].borderWidth = 2;
+                                ci.update('none');
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(2)}%`
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            grid: { color: '#eee' },
+                            ticks: { callback: v => v + '%' }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { maxTicksLimit: 10 }
+                        }
+                    },
+                    elements: {
+                        line: {
+                            tension: 0.3
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
