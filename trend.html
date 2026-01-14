@@ -282,7 +282,10 @@
                     },
                     scales: {
                         y: {
-                            grid: { color: '#eee' },
+                            grid: {
+                            color: context => context.tick.value === 0 ? '#333' : '#eee',
+                            lineWidth: context => context.tick.value === 0 ? 2 : 1
+                        },
                             ticks: { callback: v => v + '%' }
                         },
                         x: {
