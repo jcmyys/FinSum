@@ -68,7 +68,7 @@
             }
 
             const allDates = [...new Set(validRes.flatMap(r => r.dates))].sort();
-            const labels = allDates.slice(-180);  // 최대 180일 표시 제한 (화면 최적화)
+            const labels = allDates.slice(-180);  // 최대 180일 표시 제한
             
             const datasets = validRes.map((r, i) => {
                 const data = labels.map(d => {
@@ -97,7 +97,49 @@
                     plugins: {
                         legend: { 
                             position: 'top', 
-                            labels: { usePointStyle: true, font: { size: 12 }, padding: 15 }
+                            labels: { usePointStyle: true, font: { size: 12 }, padding: 15 },
+                            onClick: function(e, legendItem, legend) {
+                                const index = legendItem.datasetIndex;
+                                const ci = legend.chart;
+                                const dataset = ci.data.datasets[index];
+
+                                // 상태 추적을 위한 커스텀 변수 (toggleState)
+                                // 0: 초기 보통 상태
+                                // 1: 두꺼움 (강조)
+                                // 2: 다시 보통 (두꺼움 -> 보통)
+                                // 3: 숨김
+                                if (dataset.toggleState === undefined) {
+                                    dataset.toggleState = 0;
+                                }
+
+                                let nextState;
+                                
+                                // 순환 로직: 보통(0) -> 두꺼움(1) -> 보통(2) -> 숨김(3) -> 두꺼움(1) ...
+                                if (dataset.toggleState === 0) nextState = 1;
+                                else if (dataset.toggleState === 1) nextState = 2;
+                                else if (dataset.toggleState === 2) nextState = 3;
+                                else if (dataset.toggleState === 3) nextState = 1;
+
+                                // 상태 적용
+                                if (nextState === 1) {
+                                    // 두꺼워짐
+                                    dataset.borderWidth = 8;
+                                    ci.setDatasetVisibility(index, true);
+                                } else if (nextState === 2) {
+                                    // 보통 두께로 복귀
+                                    dataset.borderWidth = 3;
+                                    ci.setDatasetVisibility(index, true);
+                                } else if (nextState === 3) {
+                                    // 사라짐 (숨김)
+                                    ci.setDatasetVisibility(index, false);
+                                    // 숨겨진 상태에서도 borderWidth는 3으로 리셋해두면 좋음 (다음 나타날때 대비)
+                                    dataset.borderWidth = 3; 
+                                }
+
+                                // 상태 저장 및 차트 업데이트
+                                dataset.toggleState = nextState;
+                                ci.update();
+                            }
                         },
                         tooltip: {
                             mode: 'index',
