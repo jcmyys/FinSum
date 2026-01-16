@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>미국 주식 시가총액 1~10위 (90일)</title>
+    <title>미국 주식 시가총액 1~10위 (상태 저장 기능 추가)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <style>
@@ -23,9 +23,24 @@
         const colors=['#00C49A','#FFBB28','#FF8042','#8884D8','#82CA9D','#A4DE6C','#D0ED57','#FF6B6B','#4ECDC4','#45B7D1'];
         const shares={'NVDA':24600000000,'MSFT':7430000000,'AAPL':15200000000,'GOOGL':12300000000,'AMZN':10450000000,'META':2600000000,'AVGO':4680000000,'TSLA':3200000000,'BRK-B':2160000000,'LLY':950000000};
         
+        // ★ 상태 저장/로드 로직 추가
+        const STATE_STORAGE_KEY = 'top_chart_states_v1';
+        let savedStates = {}; // { 'NVDA': 1, 'AAPL': 0 ... }
+
+        function loadStates() {
+            const s = localStorage.getItem(STATE_STORAGE_KEY);
+            if(s) savedStates = JSON.parse(s);
+        }
+        function saveStates() {
+            localStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(savedStates));
+        }
+
+        // 초기 로드
+        loadStates();
+
         // 90일 (3개월) 데이터
         const dtEnd=Math.floor(Date.now()/1000);
-        const dtStart=dtEnd-(90*24*60*60);  // 90일
+        const dtStart=dtEnd-(90*24*60*60); 
 
         async function fetchHistory(symbol){
             try{
@@ -47,7 +62,6 @@
                 const closes = quotes.close || quotes.adjclose || [];
                 const dates = timestamps.map(ts => new Date(ts * 1000).toISOString().slice(0, 10));
                 const marketCaps = closes.map((close, i) => close ? (close * shares[symbol] / 1e12) : null).filter(c => c !== null);
-                console.log(symbol + ': ' + marketCaps.length + ' days');
                 return { dates: dates.slice(0, marketCaps.length), marketCaps, symbol };
             } catch(e) {
                 console.log('Fetch error ' + symbol + ':', e.message);
@@ -59,8 +73,7 @@
             console.log('=== 90일 시총 그래프 시작 (3개월) ===');
             const res = await Promise.all(symbols.map(fetchHistory));
             
-            const validRes = res.filter(r => r && r.marketCaps.length > 60);  // 최소 60일 데이터
-            console.log('Valid (60+ days):', validRes.map(r=>r.symbol));
+            const validRes = res.filter(r => r && r.marketCaps.length > 60); 
             
             if(validRes.length < 3) {
                 document.body.innerHTML = '<h1 style="color:red;text-align:center;margin-top:200px;">❌ 데이터 부족 (' + validRes.length + '/10)<br><small>F12 콘솔 확인 또는 VPN 사용</small></h1>';
@@ -68,23 +81,35 @@
             }
 
             const allDates = [...new Set(validRes.flatMap(r => r.dates))].sort();
-            const labels = allDates.slice(-180);  // 최대 180일 표시 제한
+            const labels = allDates.slice(-180);  
             
             const datasets = validRes.map((r, i) => {
                 const data = labels.map(d => {
                     const idx = r.dates.indexOf(d);
                     return idx > -1 ? r.marketCaps[idx] : null;
                 });
+
+                // 저장된 상태 불러오기 (기본값 0)
+                const state = savedStates[r.symbol] || 0;
+                let bWidth = 3;
+                let isHidden = false;
+                
+                if (state === 1) bWidth = 8;
+                else if (state === 3) isHidden = true;
+
                 return {
                     label: names[r.symbol] || r.symbol,
+                    symbolKey: r.symbol, // 식별용 키
                     data: data,
                     borderColor: colors[i % colors.length],
                     backgroundColor: colors[i % colors.length] + '33',
                     fill: false,
                     tension: 0.3,
-                    borderWidth: 3,
+                    borderWidth: bWidth,
+                    hidden: isHidden, // 초기 숨김 적용
                     pointRadius: 1,
-                    pointHoverRadius: 5
+                    pointHoverRadius: 5,
+                    toggleState: state // 현재 상태 저장
                 };
             });
 
@@ -102,42 +127,37 @@
                                 const index = legendItem.datasetIndex;
                                 const ci = legend.chart;
                                 const dataset = ci.data.datasets[index];
+                                const sym = dataset.symbolKey;
 
-                                // 상태 추적을 위한 커스텀 변수 (toggleState)
-                                // 0: 초기 보통 상태
-                                // 1: 두꺼움 (강조)
-                                // 2: 다시 보통 (두꺼움 -> 보통)
-                                // 3: 숨김
                                 if (dataset.toggleState === undefined) {
                                     dataset.toggleState = 0;
                                 }
 
                                 let nextState;
-                                
-                                // 순환 로직: 보통(0) -> 두꺼움(1) -> 보통(2) -> 숨김(3) -> 두꺼움(1) ...
+                                // 0->1->2->3->1 순환 (기존 로직 유지)
+                                // 0:보통, 1:두꺼움, 2:보통복귀, 3:숨김
                                 if (dataset.toggleState === 0) nextState = 1;
                                 else if (dataset.toggleState === 1) nextState = 2;
                                 else if (dataset.toggleState === 2) nextState = 3;
                                 else if (dataset.toggleState === 3) nextState = 1;
 
-                                // 상태 적용
                                 if (nextState === 1) {
-                                    // 두꺼워짐
                                     dataset.borderWidth = 8;
                                     ci.setDatasetVisibility(index, true);
                                 } else if (nextState === 2) {
-                                    // 보통 두께로 복귀
                                     dataset.borderWidth = 3;
                                     ci.setDatasetVisibility(index, true);
                                 } else if (nextState === 3) {
-                                    // 사라짐 (숨김)
                                     ci.setDatasetVisibility(index, false);
-                                    // 숨겨진 상태에서도 borderWidth는 3으로 리셋해두면 좋음 (다음 나타날때 대비)
                                     dataset.borderWidth = 3; 
                                 }
 
-                                // 상태 저장 및 차트 업데이트
                                 dataset.toggleState = nextState;
+                                
+                                // ★ 상태 저장
+                                savedStates[sym] = nextState;
+                                saveStates();
+
                                 ci.update();
                             }
                         },

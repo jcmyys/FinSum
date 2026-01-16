@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>한국 주식 수익률 비교 (스마트 검색 & 상세 레전드)</title>
+    <title>한국 주식 수익률 비교 (상태 저장 포함)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Malgun Gothic", sans-serif; margin: 0; padding: 20px; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
@@ -14,7 +14,6 @@
         button.add-btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; transition: background 0.2s; white-space: nowrap; }
         button.add-btn:hover { background: #0056b3; }
 
-        /* 커스텀 레전드 스타일 */
         .custom-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; justify-content: center; }
         .legend-item { 
             background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; 
@@ -32,7 +31,6 @@
         .legend-prices { margin-top: 4px; color: #666; font-size: 12px; display: flex; align-items: center; gap: 5px; }
         .price-arrow { color: #999; font-size: 10px; }
         
-        /* 한국 주식 색상: 상승=빨강, 하락=파랑 */
         .text-up { color: #d60000; font-weight: bold; }
         .text-down { color: #0051c7; font-weight: bold; }
         .text-flat { color: #666; }
@@ -56,7 +54,7 @@
             <h2>📈 한국 주식 수익률 비교</h2>
         </div>
         
-        <p style="font-size: 0.9em; color: #666; margin-top:0;">범례를 클릭하여 <b>강조(굵게) → 보통 → 숨김</b> 순서로 변경할 수 있습니다.</p>
+        <p style="font-size: 0.9em; color: #666; margin-top:0;">범례를 클릭하여 <b>보통 → 강조(굵게) → 숨김</b> 순서로 변경할 수 있습니다. (자동 저장)</p>
         
         <div class="controls">
             <input type="text" id="symbolInput" placeholder="종목명(예: 삼성전자) 또는 코드(005930) 입력" onkeypress="handleEnter(event)">
@@ -64,9 +62,7 @@
         </div>
 
         <div id="customLegend" class="custom-legend"></div>
-        
         <div id="statusMessage"></div>
-
         <div class="chart-container">
             <canvas id="comparisonChart"></canvas>
         </div>
@@ -74,12 +70,11 @@
 
     <script>
         let myChart = null;
-        // symbols 구조 변경: 단순 문자열 배열이 아니라 객체 배열로 관리하여 '이름'과 '코드'를 모두 기억함
-        // 예: { code: '005930.KS', name: '삼성전자' }
+        // stockList 구조: { code: '...', name: '...', state: 0 }
+        // state: 0(보통), 1(강조), 2(숨김)
         let stockList = []; 
-        const STORAGE_KEY = 'my_kstock_symbols_v1'; 
+        const STORAGE_KEY = 'my_kstock_symbols_v2_state'; 
         
-        // 색상 팔레트
         const colors = [
             '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', 
             '#2E86C1', '#28B463', '#D35400', '#884EA0', '#839192', '#F1C40F'
@@ -88,11 +83,10 @@
         window.onload = function() {
             loadSymbols();
             if (stockList.length === 0) {
-                // 초기값: 삼성전자, SK하이닉스, NAVER
                 stockList = [
-                    { code: '005930.KS', name: '삼성전자' },
-                    { code: '000660.KS', name: 'SK하이닉스' },
-                    { code: '035420.KS', name: 'NAVER' }
+                    { code: '005930.KS', name: '삼성전자', state: 0 },
+                    { code: '000660.KS', name: 'SK하이닉스', state: 0 },
+                    { code: '035420.KS', name: 'NAVER', state: 0 }
                 ];
                 saveSymbols();
             }
@@ -101,7 +95,14 @@
 
         function loadSymbols() {
             const stored = localStorage.getItem(STORAGE_KEY);
-            if (stored) stockList = JSON.parse(stored);
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                // 구버전(state 없는 객체) 마이그레이션
+                stockList = parsed.map(item => {
+                    if (item.state === undefined) item.state = 0;
+                    return item;
+                });
+            }
         }
 
         function saveSymbols() {
@@ -110,7 +111,6 @@
 
         function handleEnter(e) { if (e.key === 'Enter') searchAndAddSymbol(); }
 
-        // 검색 및 추가 로직 (핵심 변경 사항)
         async function searchAndAddSymbol() {
             const input = document.getElementById('symbolInput');
             const val = input.value.trim();
@@ -118,7 +118,6 @@
 
             showMessage('🔍 검색 중...', '#007bff');
 
-            // 1. 이미 리스트에 있는지 확인
             const exists = stockList.some(item => item.code === val || item.name === val || item.code.startsWith(val));
             if (exists) {
                 showMessage('⚠️ 이미 목록에 있는 종목입니다.', 'orange');
@@ -128,17 +127,13 @@
             let symbolToAdd = null;
             let nameToAdd = null;
 
-            // 2. 입력값이 6자리 숫자라면 (종목코드 직접 입력)
             if (/^\d{6}$/.test(val)) {
-                // 기본적으로 코스피(.KS) 시도 후 실패시 코스닥(.KQ)은 데이터 fetch 단계에서 판별하기 어려우므로
-                // Yahoo Search API를 통해 정확한 티커 확인
                 try {
                     const searchResult = await callYahooSearchApi(val);
                     if (searchResult) {
                         symbolToAdd = searchResult.symbol;
                         nameToAdd = searchResult.shortname || searchResult.longname;
                     } else {
-                        // 검색 안되면 기본적으로 KS로 가정
                         symbolToAdd = val + '.KS'; 
                         nameToAdd = val;
                     }
@@ -146,14 +141,11 @@
                     symbolToAdd = val + '.KS';
                     nameToAdd = val;
                 }
-            } 
-            // 3. 입력값이 문자라면 (종목명 검색)
-            else {
+            } else {
                 try {
                     const result = await callYahooSearchApi(val);
                     if (result) {
                         symbolToAdd = result.symbol;
-                        // 한국 종목은 보통 000000.KS 형식이므로 한국 이름 사용
                         nameToAdd = result.shortname || result.longname; 
                     } else {
                         showMessage(`❌ '${val}'을(를) 찾을 수 없습니다.`, 'red');
@@ -165,32 +157,25 @@
                 }
             }
 
-            // 중복 재확인 (API 결과 코드로)
             if (stockList.some(s => s.code === symbolToAdd)) {
                 showMessage('⚠️ 이미 존재하는 종목입니다.', 'orange');
                 input.value = '';
                 return;
             }
 
-            // 추가
-            stockList.push({ code: symbolToAdd, name: nameToAdd });
+            // state: 0 초기값
+            stockList.push({ code: symbolToAdd, name: nameToAdd, state: 0 });
             saveSymbols();
             input.value = '';
             updateChart();
         }
 
-        // Yahoo Search API 호출
         async function callYahooSearchApi(query) {
-            // Yahoo Finance Search API (한국 주식 우선 검색)
             const yahooSearchUrl = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=1&newsCount=0&enableFuzzyQuery=false&quotesQueryId=tss_match_eq_basic`;
             const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(yahooSearchUrl);
-            
             const res = await fetch(proxyUrl);
             const data = await res.json();
-            
-            if (data.quotes && data.quotes.length > 0) {
-                return data.quotes[0]; // 가장 정확한 첫 번째 결과 반환
-            }
+            if (data.quotes && data.quotes.length > 0) return data.quotes[0];
             return null;
         }
 
@@ -206,10 +191,8 @@
             el.innerText = msg;
         }
 
-        // 데이터 가져오기
         async function fetchStockData(stockObj) {
             const symbol = stockObj.code;
-            // 3개월 데이터 (약 95일)
             const dtEnd = Math.floor(Date.now() / 1000);
             const dtStart = dtEnd - (95 * 24 * 60 * 60); 
             const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${dtStart}&period2=${dtEnd}&interval=1d`;
@@ -219,17 +202,12 @@
                 const res = await fetch(url);
                 if (!res.ok) throw new Error('Network Error');
                 const json = await res.json();
-                
                 if(!json.chart || !json.chart.result) throw new Error('No Data');
 
                 const result = json.chart.result[0];
                 const timestamps = result.timestamp;
                 const closes = result.indicators.quote[0].close;
                 
-                // 메타데이터에서 이름 가져오기 시도 (저장된 이름보다 API 이름이 정확할 수 있음)
-                // 하지만 한글 검색시 깨질 수 있으므로 저장된 이름 우선 사용
-                const metaName = stockObj.name;
-
                 const validPrices = [];
                 const validDates = [];
                 
@@ -246,9 +224,10 @@
 
                 return { 
                     symbol: symbol, 
-                    name: metaName, 
+                    name: stockObj.name, 
                     dates: validDates, 
-                    prices: validPrices 
+                    prices: validPrices,
+                    state: stockObj.state // 상태 전달
                 };
             } catch (e) {
                 console.error(e);
@@ -270,7 +249,6 @@
 
             if (validResults.length === 0) { showMessage('데이터 없음', 'red'); return; }
 
-            // 날짜 정렬
             const allDatesSet = new Set();
             validResults.forEach(r => r.dates.forEach(d => allDatesSet.add(d)));
             const sortedLabels = Array.from(allDatesSet).sort();
@@ -286,26 +264,32 @@
 
                 const color = colors[index % colors.length];
 
+                // 저장된 state에 따른 초기 스타일 적용
+                let bWidth = 2;
+                let isHidden = false;
+                if (r.state === 1) bWidth = 6; // 강조
+                else if (r.state === 2) isHidden = true; // 숨김
+
                 return {
-                    label: r.name, // 차트 툴팁용
-                    code: r.symbol, // 식별용
+                    label: r.name, 
+                    code: r.symbol,
                     data: data,
                     borderColor: color,
                     backgroundColor: color,
-                    borderWidth: 2, 
+                    borderWidth: bWidth, 
                     pointRadius: 0,
                     pointHoverRadius: 4, 
                     tension: 0.3,
                     fill: false,
-                    // 커스텀 데이터 (레전드 표시용)
+                    hidden: isHidden, // Chart.js 시각적 숨김
                     originPrice: basePrice,
                     currentPrice: lastPrice,
-                    toggleState: 0 // 0:보통, 1:강조, 2:숨김 (로직 상 0->1->0복귀->2숨김->1강조 순환 등으로 구현)
+                    viewState: r.state // 현재 상태 (0:보통, 1:강조, 2:숨김)
                 };
             });
 
             drawChart(sortedLabels, datasets);
-            generateCustomLegend(datasets); // 차트 생성 후 HTML 레전드 생성
+            generateCustomLegend(datasets); 
             showMessage('✅ 업데이트 완료', 'green');
             setTimeout(() => showMessage(''), 2000);
         }
@@ -322,7 +306,7 @@
                     maintainAspectRatio: false,
                     interaction: { mode: 'index', intersect: false },
                     plugins: {
-                        legend: { display: false }, // 기본 레전드 숨김
+                        legend: { display: false }, 
                         tooltip: {
                             callbacks: {
                                 label: ctx => {
@@ -337,15 +321,12 @@
                             grid: { color: c => c.tick.value === 0 ? '#666' : '#eee', lineWidth: c => c.tick.value === 0 ? 1.5 : 1 },
                             ticks: { callback: v => v + '%' }
                         },
-                        x: { display: false } // X축 날짜 숨김 (깔끔하게)
+                        x: { display: false } 
                     }
                 }
             });
         }
 
-        // ============================================
-        // ★ 핵심 기능: 상세 정보를 담은 HTML 레전드 생성
-        // ============================================
         function generateCustomLegend(datasets) {
             const container = document.getElementById('customLegend');
             container.innerHTML = '';
@@ -356,7 +337,6 @@
                 const diff = endP - startP;
                 const diffRate = ((diff / startP) * 100).toFixed(1);
                 
-                // 한국식 색상: 상승(빨강), 하락(파랑)
                 const priceClass = diff >= 0 ? 'text-up' : 'text-down';
                 const sign = diff >= 0 ? '+' : '';
 
@@ -364,7 +344,10 @@
                 div.className = 'legend-item';
                 div.dataset.index = index;
                 
-                // 레전드 내용 구성
+                // 저장된 state에 따라 클래스 추가
+                if (ds.viewState === 1) div.classList.add('highlighted');
+                else if (ds.viewState === 2) div.classList.add('hidden');
+
                 div.innerHTML = `
                     <div class="legend-color-box" style="background:${ds.borderColor}"></div>
                     <div class="legend-info">
@@ -380,7 +363,6 @@
                     </div>
                 `;
 
-                // 클릭 이벤트 (상태 순환)
                 div.onclick = () => toggleDataset(index, div);
                 container.appendChild(div);
             });
@@ -390,132 +372,41 @@
             const ci = myChart;
             const ds = ci.data.datasets[index];
             
-            // 상태 초기화
-            if (ds.toggleState === undefined) ds.toggleState = 0;
-
-            // 순환 로직: 0(보통) -> 1(강조) -> 2(보통 복귀) -> 3(숨김) -> 1(강조) ... 
-            // 사용자의 요청 흐름: 강조 -> 보통 -> 숨김
+            // 순환 로직: 0(보통) -> 1(강조) -> 2(숨김) -> 0(보통)
             let nextState;
-            const current = ds.toggleState;
+            const current = ds.viewState;
 
-            if (current === 0) nextState = 1;      // 보통 -> 강조
-            else if (current === 1) nextState = 0; // 강조 -> 보통
-            else if (current === 0) nextState = 3; // (로직상 이렇게 갈수없으므로 조정) 
-            // 실제 구현: 클릭할때마다 순환
-            // 0(Normal) -> 1(Highlight) -> 2(Hidden) -> 0(Normal)
-            
-            // 기존 코드의 3단계 로직을 HTML 클래스와 매핑
             if (current === 0) nextState = 1;
-            else if (current === 1) nextState = 2; // 보통으로 돌아가기위해 상태값 조정필요하지만, 여기선 2를 보통으로 쓰지 않고 숨김으로 쓰겠음? 
-            // 요청사항: 강조 -> 보통 -> 숨김 순서.
-            // 0:보통, 1:강조, 2:숨김
-            if (current === 0) nextState = 1; // 강조
-            else if (current === 1) nextState = 0; // 보통 (강조 해제) -> UX상 바로 숨김으로 가는게 아니라 보통을 거치는게 자연스러움
-            // 아니면 요청대로: 강조 -> 보통 -> 숨김 -> 강조?
-            // 작성자 의도 파악: 강조 -> 보통 -> 숨김 -> (다시 0)
-            
-            // 재정의:
-            // State 0: Normal (보통)
-            // State 1: Highlight (강조)
-            // State 2: Hidden (숨김)
-            
-            if (current === 0) nextState = 1;
-            else if (current === 1) nextState = 0; // 이 부분은 강조 해제되어 보통이 됨. 그 다음 클릭 시 숨김이 되어야 함.
-            // 이를 구현하려면 상태 변수가 하나 더 필요하거나 상태 순서를 명확히 해야 함.
-            // State Flow: 0(Init) -> 1(Bold) -> 0(Normal, but mark as visited?) 
-            // 간단하게: 0(보통) -> 1(강조) -> 2(숨김) -> 0(보통) 으로 순환
-            
-            if (current === 0) nextState = 1;
-            else if (current === 1) nextState = 0; // 강조 -> 보통
-            // 여기서 문제가 발생함. 보통에서 클릭하면 강조가 됨.
-            // 강조 -> 보통이 된 직후에 클릭하면 다시 강조가 됨. 숨김으로 가지 않음.
-            // 따라서 별도 플래그가 필요함.
-            
-            // 개선된 로직: 3-state counter
-            // stateValue: 0(보통), 1(강조), 2(숨김)
-            
-            ds.stateCounter = (ds.stateCounter || 0) + 1;
-            const mode = ds.stateCounter % 3; // 1(강조), 2(보통?), 0(숨김?) -> 순서 맞추기 어려움.
-            
-            // 직관적인 순서 강제 지정:
-            // 현재 상태가 0(보통)이고 이전이 숨김이었다면 -> 강조
-            // 복잡하므로 단순화: 
-            // 클래스 리스트 확인
-            
-            if (element.classList.contains('highlighted')) {
-                // 현재 강조 상태 -> 보통으로
-                element.classList.remove('highlighted');
-                ds.borderWidth = 2;
-                ci.setDatasetVisibility(index, true);
-                ds.toggleState = 0; // 보통
-                // 보통에서 다음 클릭 시 숨김으로 가기 위해 임시 상태가 필요하지만,
-                // UI적으로 "강조 -> 보통 -> 숨김"을 순차적으로 하려면:
-                // 변수 값: 0(Start) -> 1(High) -> 2(Normal_ReadyToHide) -> 3(Hidden) -> 1...
-            } else if (element.classList.contains('hidden')) {
-                // 현재 숨김 상태 -> 강조로 (혹은 보통으로)
-                element.classList.remove('hidden');
-                // 바로 강조로? 아니면 보통으로? -> 보통으로 복귀가 일반적
-                ds.borderWidth = 2;
-                ci.setDatasetVisibility(index, true);
-                ds.toggleState = 0;
-            } else {
-                // 현재 보통 상태
-                // 만약 이전에 강조였다가 돌아온거면 숨김으로, 처음이면 강조로?
-                // 헷갈리므로 단순 토글: 보통 -> 강조 -> 숨김 -> 보통
-                if (ds.toggleState === 0) {
-                    // 보통 -> 강조
-                    element.classList.add('highlighted');
-                    ds.borderWidth = 6; // 선 굵게
-                    // 다른 데이터셋 연하게 처리하고 싶으면 여기서 처리 가능
-                    ci.setDatasetVisibility(index, true);
-                    ds.toggleState = 1;
-                } else if (ds.toggleState === 2) { // 숨김이었다가 보통된 직후 (위 로직에 의해 0으로 초기화됨)
-                     // pass
-                }
-            }
-            
-            // 로직 재정리 (단순 스테이트 머신 사용)
-            // 0: Normal
-            // 1: Highlighted
-            // 2: Hidden
-            
-            let newState;
-            if (ds.viewState === undefined) ds.viewState = 0; // 초기값 Normal
+            else if (current === 1) nextState = 2;
+            else nextState = 0;
 
-            if (ds.viewState === 0) { // Normal -> Highlight
-                newState = 1;
-            } else if (ds.viewState === 1) { // Highlight -> Normal
-                newState = 0; 
-                // 여기서 Normal로 가면 다음 클릭시 다시 Highlight가 됨.
-                // "보통" 상태가 두 번(초기, 강조후 복귀) 존재해서 생기는 문제.
-                // 흐름을 0 -> 1 -> 3(Normal_2) -> 2 -> 0 으로 설계
-                newState = 3; 
-            } else if (ds.viewState === 3) { // Normal_2 -> Hidden
-                newState = 2;
-            } else if (ds.viewState === 2) { // Hidden -> Normal (or Highlight?)
-                newState = 0; // 다시 처음으로
-            }
-
-            // 적용
+            // UI 적용
             element.classList.remove('highlighted', 'hidden');
             
-            if (newState === 0 || newState === 3) { // Normal
+            if (nextState === 0) { // 보통
                 ds.borderWidth = 2;
                 ci.setDatasetVisibility(index, true);
-            } else if (newState === 1) { // Highlight
+            } else if (nextState === 1) { // 강조
                 element.classList.add('highlighted');
-                ds.borderWidth = 8;
-                // z-index 조정을 위해 데이터셋 순서를 바꿀 순 없으니 그대로 둠
+                ds.borderWidth = 6;
                 ci.setDatasetVisibility(index, true);
-            } else if (newState === 2) { // Hidden
+            } else if (nextState === 2) { // 숨김
                 element.classList.add('hidden');
                 ci.setDatasetVisibility(index, false);
             }
 
-            ds.viewState = newState;
+            // 차트 갱신
+            ds.viewState = nextState;
             ci.update();
-        }
 
+            // ★ LocalStorage에 상태 저장
+            // stockList에서 해당 코드를 찾아 상태 업데이트
+            const targetSymbol = stockList.find(s => s.code === ds.code);
+            if (targetSymbol) {
+                targetSymbol.state = nextState;
+                saveSymbols();
+            }
+        }
     </script>
 </body>
 </html>
