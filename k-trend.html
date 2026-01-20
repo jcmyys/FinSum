@@ -44,6 +44,10 @@
 
         .nav-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         h2 { margin: 0; font-size: 1.5rem; word-break: keep-all; }
+
+        /* 새로 추가된 버튼 스타일 */
+        .reset-btn { background: #6c757d; color: white; padding: 8px 15px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; margin-left: 10px;}
+        .reset-btn:hover { background: #5a6268; }
         
     </style>
 </head>
@@ -52,6 +56,7 @@
     <div class="container">
         <div class="nav-header">
             <h2>📈 한국 주식 수익률 비교</h2>
+            <button class="reset-btn" onclick="resetLines()">⟲ 보통선</button>
         </div>
         
         <p style="font-size: 0.9em; color: #666; margin-top:0;">범례를 클릭하여 <b>보통 → 강조(굵게) → 숨김</b> 순서로 변경할 수 있습니다. (자동 저장)</p>
@@ -107,6 +112,36 @@
 
         function saveSymbols() {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(stockList));
+        }
+
+        // ★ 보통선 리셋 함수 추가
+        function resetLines() {
+            if (!myChart) return;
+            let changed = false;
+
+            // 1. 데이터 상태 변경 (강조된 것만 보통으로)
+            stockList.forEach(item => {
+                if(item.state === 1) {
+                    item.state = 0;
+                    changed = true;
+                }
+            });
+
+            if (changed) {
+                saveSymbols();
+
+                // 2. 차트 객체 업데이트
+                myChart.data.datasets.forEach((ds, index) => {
+                    if (ds.viewState === 1) {
+                        ds.viewState = 0;
+                        ds.borderWidth = 2; // 보통 굵기
+                        // 커스텀 범례 UI 강조 효과 제거
+                        const legendItem = document.querySelector(`.legend-item[data-index="${index}"]`);
+                        if(legendItem) legendItem.classList.remove('highlighted');
+                    }
+                });
+                myChart.update();
+            }
         }
 
         function handleEnter(e) { if (e.key === 'Enter') searchAndAddSymbol(); }

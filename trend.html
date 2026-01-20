@@ -41,6 +41,9 @@
 
         .top-btn { background: #28a745; }
         .top-btn:hover { background: #218838; }
+
+        .reset-btn { background: #6c757d; }
+        .reset-btn:hover { background: #5a6268; }
     </style>
 </head>
 <body>
@@ -49,6 +52,7 @@
         <div class="nav-header">
             <h2 style="margin:0;">📈 주식 수익률 비교</h2>
             <div class="nav-buttons">
+                <button class="nav-btn reset-btn" onclick="resetLines()">⟲ 보통선</button>
                 <button class="nav-btn top-btn" onclick="window.location.href='top_chart.html'">🏆 Top 차트</button>
                 <button class="nav-btn home-btn" onclick="window.location.href='index.html'">🏠 메인으로</button>
             </div>
@@ -122,6 +126,33 @@
 
         function saveSymbols() {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(symbols));
+        }
+
+        // ★ 보통선 리셋 함수 추가
+        function resetLines() {
+            if (!myChart) return;
+            let changed = false;
+
+            // 1. 데이터 업데이트: 강조(1) -> 보통(0)으로 변경. 숨김(3)은 유지.
+            symbols.forEach(s => {
+                if(s.state === 1) {
+                    s.state = 0;
+                    changed = true;
+                }
+            });
+
+            if (changed) {
+                saveSymbols();
+
+                // 2. 차트 뷰 업데이트
+                myChart.data.datasets.forEach(ds => {
+                    if (ds.customState === 1) {
+                        ds.customState = 0;
+                        ds.borderWidth = 2; // 보통 굵기로 리셋
+                    }
+                });
+                myChart.update();
+            }
         }
 
         function handleEnter(e) { if (e.key === 'Enter') addSymbol(); }

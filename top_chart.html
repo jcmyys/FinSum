@@ -8,9 +8,14 @@
 <style>
     .chart-button { background-color: #28a745; color: white; }
     .chart-button:hover { background-color: #218838; }
+    .reset-btn { background-color: #6c757d; color: white; }
+    .reset-btn:hover { background-color: #5a6268; }
 </style>
 <body style="margin:0;padding:20px;background:#f0f2f5;height:100vh;display:flex;align-items:center;justify-content:center;">
-    <div style="position: absolute; top: 20px; right: 20px; z-index: 1000;">
+    <div style="position: absolute; top: 20px; right: 20px; z-index: 1000; display: flex; gap: 10px;">
+        <button onclick="resetLines()" class="nav-btn reset-btn" style="padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
+            ⟲ 보통선
+        </button>
         <button onclick="window.location.href='index.html'" class="nav-btn" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;"> 
             ← 메인 페이지로 이동
         </button>
@@ -23,9 +28,10 @@
         const colors=['#00C49A','#FFBB28','#FF8042','#8884D8','#82CA9D','#A4DE6C','#D0ED57','#FF6B6B','#4ECDC4','#45B7D1'];
         const shares={'NVDA':24600000000,'MSFT':7430000000,'AAPL':15200000000,'GOOGL':12300000000,'AMZN':10450000000,'META':2600000000,'AVGO':4680000000,'TSLA':3200000000,'BRK-B':2160000000,'LLY':950000000};
         
-        // ★ 상태 저장/로드 로직 추가
+        // ★ 상태 저장/로드 로직
         const STATE_STORAGE_KEY = 'top_chart_states_v1';
         let savedStates = {}; // { 'NVDA': 1, 'AAPL': 0 ... }
+        let myChart = null; // 차트 인스턴스 전역 변수
 
         function loadStates() {
             const s = localStorage.getItem(STATE_STORAGE_KEY);
@@ -33,6 +39,27 @@
         }
         function saveStates() {
             localStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(savedStates));
+        }
+
+        // ★ 보통선 리셋 함수 추가
+        function resetLines() {
+            if (!myChart) return;
+            
+            let changed = false;
+            myChart.data.datasets.forEach(ds => {
+                // 상태가 1(강조)인 경우에만 0(보통)으로 변경. 숨김(3)은 유지.
+                if (ds.toggleState === 1) {
+                    ds.toggleState = 0;
+                    ds.borderWidth = 3;
+                    savedStates[ds.symbolKey] = 0;
+                    changed = true;
+                }
+            });
+
+            if (changed) {
+                saveStates();
+                myChart.update();
+            }
         }
 
         // 초기 로드
@@ -113,7 +140,7 @@
                 };
             });
 
-            new Chart(document.getElementById('marketCapChart'), {
+            myChart = new Chart(document.getElementById('marketCapChart'), {
                 type: 'line',
                 data: { labels, datasets },
                 options: {
