@@ -34,6 +34,7 @@
         .tag span.remove { cursor: pointer; color: #dc3545; font-weight: bold; padding: 0 4px; z-index: 2; margin-left: 4px; }
         .tag span.remove:hover { color: #a71d2a; }
 
+        /* 그래프 컨테이너 relative 설정 중요 */
         .chart-container { position: relative; height: 65vh; width: 100%; }
         #statusMessage { text-align: center; margin-bottom: 10px; font-size: 14px; height: 20px; }
 
@@ -50,7 +51,7 @@
         /* 커스텀 툴팁 스타일 */
         #chartjs-tooltip {
             opacity: 0;
-            position: absolute;
+            position: absolute; /* .chart-container 기준 절대 위치 */
             pointer-events: none;
             transition: all .1s ease;
             font-size: 14px;
@@ -59,7 +60,7 @@
             text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
             z-index: 100;
             text-align: center;
-            white-space: nowrap; /* 텍스트 줄바꿈 방지 */
+            white-space: nowrap; 
         }
     </style>
 </head>
@@ -80,7 +81,7 @@
             </div>
             <div style="width: 1px; height: 24px; background: #ddd; margin: 0 5px;"></div>
             <div class="input-group">
-                <label for="dropRate">📉 하락폭(%):</label>
+                <label for="dropRate">📉 등락폭(%):</label>
                 <input type="number" id="dropRate" class="number-input" placeholder="2.5" step="0.1" oninput="updateChartSettings()">
             </div>
             <div class="input-group">
@@ -91,7 +92,7 @@
         </div>
 
         <p style="font-size: 0.9em; color: #666; margin-top:-10px; margin-bottom: 20px;">
-            * 각 종목별로 설정한 <b>기준가</b>와 <b>하락폭</b>이 자동으로 저장됩니다.
+            * 각 종목별로 설정한 <b>기준가</b>와 <b>등락폭</b>이 자동으로 저장됩니다.
         </p>
 
         <div class="symbol-list" id="symbolList"></div>
@@ -266,65 +267,86 @@
             }
         }
 
-        // 플러그인 수정: 오른쪽 여백까지 선 그리기
+        // 플러그인: 상승(Up) / 하락(Down) 모두 그리기
         const horizontalLinesPlugin = {
             id: 'horizontalLines',
             afterDatasetsDraw(chart, args, options) {
-                // width 속성 추가로 가져옴
                 const { ctx, chartArea: { top, bottom, left, right }, scales: { y }, width } = chart;
                 
                 if (!currentData || currentData.prices.length === 0) return;
 
                 const maxPrice = Math.max(...currentData.prices);
                 const base = configBasePrice !== null ? configBasePrice : maxPrice;
-                const minVisiblePrice = y.min;
                 const rate = configDropRate; 
                 if (rate <= 0) return;
+
+                const minVisiblePrice = y.min;
+                const maxVisiblePrice = y.max;
+                const lineEndX = width - 5;
 
                 ctx.save();
                 ctx.textAlign = 'right';
                 ctx.textBaseline = 'bottom';
                 ctx.font = '12px Arial';
 
-                let currentLevel = base;
-                let dropCount = 0;
-                
-                // 오른쪽 여백을 고려한 선의 끝 지점 계산 (캔버스 전체 너비 - 약간의 여백)
-                const lineEndX = width - 5;
-
-                while (true) {
-                    const price = base * (1 - (rate * dropCount) / 100);
-                    if (price < minVisiblePrice * 0.85) break;
-
+                function drawLine(price, type) {
                     const yPos = y.getPixelForValue(price);
+                    
+                    if (yPos < top - 10 || yPos > bottom + 10) return;
 
-                    if (yPos >= top - 10 && yPos <= bottom + 10) {
-                        ctx.beginPath();
-                        ctx.lineWidth = 1;
-                        if (dropCount === 0) {
-                            ctx.strokeStyle = '#dc3545';
-                            ctx.setLineDash([]);
-                        } else {
-                            ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
-                            ctx.setLineDash([4, 4]);
-                        }
-                        
-                        ctx.moveTo(left, yPos);
-                        // right 대신 lineEndX 사용
-                        ctx.lineTo(lineEndX, yPos);
-                        ctx.stroke();
+                    ctx.beginPath();
+                    ctx.lineWidth = 1;
 
-                        ctx.fillStyle = dropCount === 0 ? '#dc3545' : '#555';
-                        let labelText = '';
-                        if (dropCount === 0) labelText = `기준: $${price.toFixed(2)}`;
-                        else labelText = `-${(rate * dropCount).toFixed(1)}% ($${price.toFixed(2)})`;
-                        
-                        // 텍스트 위치도 lineEndX 기준으로 변경
-                        ctx.fillText(labelText, lineEndX - 5, yPos - 3);
+                    if (type === 'base') {
+                        ctx.strokeStyle = '#dc3545';
+                        ctx.setLineDash([]);
+                        ctx.fillStyle = '#dc3545';
+                    } else if (type === 'up') {
+                        ctx.strokeStyle = 'rgba(255, 99, 132, 0.6)';
+                        ctx.setLineDash([4, 4]);
+                        ctx.fillStyle = 'rgba(255, 99, 132, 0.9)';
+                    } else { // down
+                        ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
+                        ctx.setLineDash([4, 4]);
+                        ctx.fillStyle = '#555';
                     }
-                    dropCount++;
-                    if (dropCount > 50) break;
+
+                    ctx.moveTo(left, yPos);
+                    ctx.lineTo(lineEndX, yPos);
+                    ctx.stroke();
+
+                    let labelText = '';
+                    if (type === 'base') {
+                        labelText = `기준: $${price.toFixed(2)}`;
+                    } else {
+                        const diff = Math.abs((price - base) / base * 100);
+                        const sign = type === 'up' ? '+' : '-';
+                        labelText = `${sign}${diff.toFixed(1)}% ($${price.toFixed(2)})`;
+                    }
+                    
+                    ctx.fillText(labelText, lineEndX - 5, yPos - 3);
                 }
+
+                drawLine(base, 'base');
+
+                let count = 1;
+                while (true) {
+                    const price = base * (1 - (rate * count) / 100);
+                    if (price < minVisiblePrice * 0.8) break; 
+                    drawLine(price, 'down');
+                    count++;
+                    if (count > 100) break; 
+                }
+
+                count = 1;
+                while (true) {
+                    const price = base * (1 + (rate * count) / 100);
+                    if (price > maxVisiblePrice * 1.2) break; 
+                    drawLine(price, 'up');
+                    count++;
+                    if (count > 100) break; 
+                }
+
                 ctx.restore();
             }
         };
@@ -356,10 +378,9 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    // 오른쪽 여백 추가 (padding.right: 70) 및 상하 여백 약간 추가
                     layout: {
                         padding: {
-                            right: 70,
+                            right: 70, 
                             top: 20,
                             bottom: 10
                         }
@@ -376,7 +397,6 @@
                                     return;
                                 }
 
-                                // 툴팁 내용 설정
                                 if (tooltipModel.body) {
                                     const title = tooltipModel.title || [];
                                     const rawPrice = context.chart.data.datasets[0].data[tooltipModel.dataPoints[0].dataIndex];
@@ -386,19 +406,19 @@
                                     `;
                                 }
 
-                                const position = context.chart.canvas.getBoundingClientRect();
                                 const tooltipWidth = tooltipEl.offsetWidth;
-                                const tooltipHeight = tooltipEl.offsetHeight;
-
+                                
                                 tooltipEl.style.opacity = 1;
                                 
-                                // 수평 위치: 마우스 포인터(caretX)가 툴팁의 중앙에 오도록 정렬
-                                const leftPos = position.left + window.pageXOffset + tooltipModel.caretX - (tooltipWidth / 2);
+                                // ★ 수정됨: position.left, position.top 등 페이지 오프셋 제거 ★
+                                // chart-container가 relative이므로, 내부 절대 좌표(caretX/Y)만 사용하면 됩니다.
+                                
+                                // 수평 위치: 중앙 정렬
+                                const leftPos = tooltipModel.caretX - (tooltipWidth / 2);
                                 tooltipEl.style.left = leftPos + 'px';
                                 
-                                // 수직 위치: 데이터 포인트(caretY)에서 툴팁 높이만큼 위로 올리고, 15px 추가 간격 둠
-                                // 이렇게 하면 툴팁의 하단이 항상 데이터 포인트 위에 위치함
-                                const topPos = position.top + window.pageYOffset + tooltipModel.caretY - tooltipHeight - 15;
+                                // 수직 위치: 그래프 점(caretY)에서 10px 아래
+                                const topPos = tooltipModel.caretY + 40;
                                 tooltipEl.style.top = topPos + 'px';
                             }
                         }
