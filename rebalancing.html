@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>리밸런싱 차트 (Rebalancing)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 20px; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+        .container { width: 100%; max-width: 1200px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); position: relative; }
+        
+        .controls { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #e9ecef; }
+        
+        .input-group { display: flex; align-items: center; gap: 6px; }
+        .input-group label { font-size: 14px; font-weight: bold; color: #555; }
+        
+        input[type="text"], input[type="number"] { padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; }
+        input:focus { outline: none; border-color: #80bdff; box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25); }
+        
+        .symbol-input { width: 120px; text-transform: uppercase; }
+        .number-input { width: 80px; }
+
+        button.add-btn { padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; transition: background 0.15s; }
+        button.add-btn:hover { background: #0056b3; }
+
+        .symbol-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+        .tag { 
+            padding: 8px 16px; border-radius: 20px; display: flex; align-items: center; gap: 8px; font-size: 14px; 
+            font-weight: 500; cursor: pointer; transition: all 0.2s; border: 1px solid #dee2e6;
+            background: #e9ecef; color: #495057;
+        }
+        .tag.active { background: #e7f1ff; color: #0d6efd; border-color: #0d6efd; font-weight: bold; }
+        .tag:hover { transform: translateY(-2px); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .tag span.remove { cursor: pointer; color: #dc3545; font-weight: bold; padding: 0 4px; z-index: 2; margin-left: 4px; }
+        .tag span.remove:hover { color: #a71d2a; }
+
+        .chart-container { position: relative; height: 65vh; width: 100%; }
+        #statusMessage { text-align: center; margin-bottom: 10px; font-size: 14px; height: 20px; }
+
+        .nav-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #f1f3f5; padding-bottom: 10px; }
+        .nav-buttons { display: flex; gap: 8px; }
+        
+        .nav-btn { 
+            padding: 8px 16px; color: white; border: none; border-radius: 6px; 
+            cursor: pointer; font-size: 14px; text-decoration: none; transition: background 0.2s;
+        }
+        .home-btn { background: #6c757d; }
+        .home-btn:hover { background: #5a6268; }
+
+        /* 커스텀 툴팁 스타일 */
+        #chartjs-tooltip {
+            opacity: 0;
+            position: absolute;
+            pointer-events: none;
+            transition: all .1s ease;
+            font-size: 14px;
+            font-weight: bold;
+            color: white;
+            text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+            z-index: 100;
+            text-align: center;
+            white-space: nowrap; /* 텍스트 줄바꿈 방지 */
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="nav-header">
+            <h2 style="margin:0;">⚖️ 리밸런싱 차트</h2>
+            <div class="nav-buttons">
+                <button class="nav-btn home-btn" onclick="window.location.href='index.html'">🏠 메인으로</button>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <div class="input-group">
+                <input type="text" id="symbolInput" class="symbol-input" placeholder="종목 (예: TQQQ)" onkeypress="handleEnter(event)">
+                <button class="add-btn" onclick="addSymbol()">추가</button>
+            </div>
+            <div style="width: 1px; height: 24px; background: #ddd; margin: 0 5px;"></div>
+            <div class="input-group">
+                <label for="dropRate">📉 하락폭(%):</label>
+                <input type="number" id="dropRate" class="number-input" placeholder="2.5" step="0.1" oninput="updateChartSettings()">
+            </div>
+            <div class="input-group">
+                <label for="basePrice">🚩 기준가($):</label>
+                <input type="number" id="basePrice" class="number-input" placeholder="최고가" step="any" oninput="updateChartSettings()">
+                <button class="nav-btn" style="background: #adb5bd; padding: 6px 10px; font-size: 12px; border-radius: 4px;" onclick="resetBasePrice()">자동(Max)</button>
+            </div>
+        </div>
+
+        <p style="font-size: 0.9em; color: #666; margin-top:-10px; margin-bottom: 20px;">
+            * 각 종목별로 설정한 <b>기준가</b>와 <b>하락폭</b>이 자동으로 저장됩니다.
+        </p>
+
+        <div class="symbol-list" id="symbolList"></div>
+        <div id="statusMessage"></div>
+
+        <div class="chart-container">
+            <canvas id="mainChart"></canvas>
+            <div id="chartjs-tooltip"></div>
+        </div>
+    </div>
+
+    <script>
+        let myChart = null;
+        let symbols = []; 
+        let currentSymbol = null;
+        let currentData = null;
+        const STORAGE_KEY = 'rebalancing_portfolio_v1';
+
+        let configDropRate = 2.5;
+        let configBasePrice = null;
+
+        window.onload = function() {
+            loadSymbols();
+            if (symbols.length === 0) {
+                symbols = [
+                    { symbol: 'NVDA', basePrice: null, dropRate: 2.5 },
+                    { symbol: 'TQQQ', basePrice: null, dropRate: 5.0 },
+                    { symbol: 'SOXL', basePrice: null, dropRate: 10.0 }
+                ];
+                saveSymbols();
+            }
+            if (symbols.length > 0) {
+                selectSymbol(symbols[0].symbol); 
+            } else {
+                renderTags();
+            }
+        };
+
+        function loadSymbols() {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            if (stored) {
+                try {
+                    const parsed = JSON.parse(stored);
+                    if (parsed.length > 0 && typeof parsed[0] === 'string') {
+                        symbols = parsed.map(s => ({ symbol: s, basePrice: null, dropRate: 2.5 }));
+                    } else {
+                        symbols = parsed;
+                    }
+                } catch(e) { symbols = []; }
+            }
+        }
+
+        function saveSymbols() { localStorage.setItem(STORAGE_KEY, JSON.stringify(symbols)); }
+        function handleEnter(e) { if (e.key === 'Enter') addSymbol(); }
+
+        function addSymbol() {
+            const input = document.getElementById('symbolInput');
+            const val = input.value.trim().toUpperCase();
+            if (!val) return;
+            if (symbols.some(s => s.symbol === val)) {
+                showMessage('⚠️ 이미 존재하는 종목입니다.', 'orange');
+                selectSymbol(val);
+                input.value = '';
+                return;
+            }
+            symbols.push({ symbol: val, basePrice: null, dropRate: 2.5 });
+            saveSymbols();
+            input.value = '';
+            selectSymbol(val);
+        }
+
+        function removeSymbol(e, sym) {
+            e.stopPropagation();
+            symbols = symbols.filter(s => s.symbol !== sym);
+            saveSymbols();
+            if (currentSymbol === sym) {
+                if (symbols.length > 0) selectSymbol(symbols[0].symbol);
+                else {
+                    currentSymbol = null;
+                    destroyChart();
+                    renderTags();
+                    document.getElementById('dropRate').value = 2.5;
+                    document.getElementById('basePrice').value = '';
+                }
+            } else {
+                renderTags();
+            }
+        }
+
+        function selectSymbol(sym) {
+            currentSymbol = sym;
+            const target = symbols.find(s => s.symbol === sym);
+            if (target) {
+                configDropRate = target.dropRate !== undefined ? target.dropRate : 2.5;
+                configBasePrice = target.basePrice !== undefined ? target.basePrice : null;
+                document.getElementById('dropRate').value = configDropRate;
+                document.getElementById('basePrice').value = configBasePrice !== null ? configBasePrice : '';
+            }
+            renderTags();
+            loadAndRenderChart(sym);
+        }
+
+        function renderTags() {
+            const container = document.getElementById('symbolList');
+            container.innerHTML = '';
+            symbols.forEach(item => {
+                const div = document.createElement('div');
+                div.className = `tag ${item.symbol === currentSymbol ? 'active' : ''}`;
+                div.onclick = () => selectSymbol(item.symbol);
+                div.innerHTML = `${item.symbol} <span class="remove" onclick="removeSymbol(event, '${item.symbol}')">×</span>`;
+                container.appendChild(div);
+            });
+        }
+
+        function showMessage(msg, color='black') {
+            const el = document.getElementById('statusMessage');
+            el.style.color = color;
+            el.innerText = msg;
+        }
+
+        function updateChartSettings() {
+            const dropInput = document.getElementById('dropRate').value;
+            const priceInput = document.getElementById('basePrice').value;
+            configDropRate = parseFloat(dropInput);
+            if (isNaN(configDropRate)) configDropRate = 2.5;
+            configBasePrice = priceInput ? parseFloat(priceInput) : null;
+            if (currentSymbol) {
+                const target = symbols.find(s => s.symbol === currentSymbol);
+                if (target) {
+                    target.dropRate = configDropRate;
+                    target.basePrice = configBasePrice;
+                    saveSymbols();
+                }
+            }
+            if (myChart) myChart.update();
+        }
+
+        function resetBasePrice() {
+            document.getElementById('basePrice').value = '';
+            updateChartSettings();
+        }
+
+        async function loadAndRenderChart(symbol) {
+            showMessage(`⏳ ${symbol} 데이터 로딩 중...`, '#0d6efd');
+            const dtEnd = Math.floor(Date.now() / 1000);
+            const dtStart = dtEnd - (180 * 24 * 60 * 60);
+            const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${dtStart}&period2=${dtEnd}&interval=1d`;
+            const url = 'https://corsproxy.io/?' + encodeURIComponent(yahooUrl);
+
+            try {
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('Network Error');
+                const json = await res.json();
+                const result = json.chart.result[0];
+                const timestamps = result.timestamp;
+                const quotes = result.indicators.quote[0];
+                const validLabels = [];
+                const validPrices = [];
+                timestamps.forEach((t, i) => {
+                    if (quotes.close[i]) {
+                        validLabels.push(new Date(t * 1000).toISOString().slice(0, 10));
+                        validPrices.push(quotes.close[i]);
+                    }
+                });
+                currentData = { labels: validLabels, prices: validPrices, symbol: symbol };
+                drawChart();
+                showMessage('✅ 업데이트 완료', 'green');
+                setTimeout(() => showMessage(''), 2000);
+            } catch (e) {
+                console.error(e);
+                showMessage(`❌ ${symbol} 로드 실패`, 'red');
+            }
+        }
+
+        // 플러그인 수정: 오른쪽 여백까지 선 그리기
+        const horizontalLinesPlugin = {
+            id: 'horizontalLines',
+            afterDatasetsDraw(chart, args, options) {
+                // width 속성 추가로 가져옴
+                const { ctx, chartArea: { top, bottom, left, right }, scales: { y }, width } = chart;
+                
+                if (!currentData || currentData.prices.length === 0) return;
+
+                const maxPrice = Math.max(...currentData.prices);
+                const base = configBasePrice !== null ? configBasePrice : maxPrice;
+                const minVisiblePrice = y.min;
+                const rate = configDropRate; 
+                if (rate <= 0) return;
+
+                ctx.save();
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'bottom';
+                ctx.font = '12px Arial';
+
+                let currentLevel = base;
+                let dropCount = 0;
+                
+                // 오른쪽 여백을 고려한 선의 끝 지점 계산 (캔버스 전체 너비 - 약간의 여백)
+                const lineEndX = width - 5;
+
+                while (true) {
+                    const price = base * (1 - (rate * dropCount) / 100);
+                    if (price < minVisiblePrice * 0.85) break;
+
+                    const yPos = y.getPixelForValue(price);
+
+                    if (yPos >= top - 10 && yPos <= bottom + 10) {
+                        ctx.beginPath();
+                        ctx.lineWidth = 1;
+                        if (dropCount === 0) {
+                            ctx.strokeStyle = '#dc3545';
+                            ctx.setLineDash([]);
+                        } else {
+                            ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
+                            ctx.setLineDash([4, 4]);
+                        }
+                        
+                        ctx.moveTo(left, yPos);
+                        // right 대신 lineEndX 사용
+                        ctx.lineTo(lineEndX, yPos);
+                        ctx.stroke();
+
+                        ctx.fillStyle = dropCount === 0 ? '#dc3545' : '#555';
+                        let labelText = '';
+                        if (dropCount === 0) labelText = `기준: $${price.toFixed(2)}`;
+                        else labelText = `-${(rate * dropCount).toFixed(1)}% ($${price.toFixed(2)})`;
+                        
+                        // 텍스트 위치도 lineEndX 기준으로 변경
+                        ctx.fillText(labelText, lineEndX - 5, yPos - 3);
+                    }
+                    dropCount++;
+                    if (dropCount > 50) break;
+                }
+                ctx.restore();
+            }
+        };
+
+        function drawChart() {
+            if (!currentData) return;
+            const ctx = document.getElementById('mainChart').getContext('2d');
+            const tooltipEl = document.getElementById('chartjs-tooltip');
+            
+            if (myChart) myChart.destroy();
+
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: currentData.labels,
+                    datasets: [{
+                        label: currentData.symbol,
+                        data: currentData.prices,
+                        borderColor: '#0d6efd',
+                        backgroundColor: '#0d6efd',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        pointHoverRadius: 5,
+                        tension: 0.1,
+                        fill: false
+                    }]
+                },
+                plugins: [horizontalLinesPlugin],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    // 오른쪽 여백 추가 (padding.right: 70) 및 상하 여백 약간 추가
+                    layout: {
+                        padding: {
+                            right: 70,
+                            top: 20,
+                            bottom: 10
+                        }
+                    },
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            enabled: false,
+                            external: function(context) {
+                                const tooltipModel = context.tooltip;
+                                if (tooltipModel.opacity === 0) {
+                                    tooltipEl.style.opacity = 0;
+                                    return;
+                                }
+
+                                // 툴팁 내용 설정
+                                if (tooltipModel.body) {
+                                    const title = tooltipModel.title || [];
+                                    const rawPrice = context.chart.data.datasets[0].data[tooltipModel.dataPoints[0].dataIndex];
+                                    tooltipEl.innerHTML = `
+                                        <div>${title[0]}</div>
+                                        <div style="font-size:1.3em;">$${Number(rawPrice).toFixed(2)}</div>
+                                    `;
+                                }
+
+                                const position = context.chart.canvas.getBoundingClientRect();
+                                const tooltipWidth = tooltipEl.offsetWidth;
+                                const tooltipHeight = tooltipEl.offsetHeight;
+
+                                tooltipEl.style.opacity = 1;
+                                
+                                // 수평 위치: 마우스 포인터(caretX)가 툴팁의 중앙에 오도록 정렬
+                                const leftPos = position.left + window.pageXOffset + tooltipModel.caretX - (tooltipWidth / 2);
+                                tooltipEl.style.left = leftPos + 'px';
+                                
+                                // 수직 위치: 데이터 포인트(caretY)에서 툴팁 높이만큼 위로 올리고, 15px 추가 간격 둠
+                                // 이렇게 하면 툴팁의 하단이 항상 데이터 포인트 위에 위치함
+                                const topPos = position.top + window.pageYOffset + tooltipModel.caretY - tooltipHeight - 15;
+                                tooltipEl.style.top = topPos + 'px';
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { grid: { display: false } },
+                        x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } }
+                    }
+                }
+            });
+        }
+        
+        function destroyChart() {
+            if (myChart) myChart.destroy();
+            myChart = null;
+            currentData = null;
+        }
+    </script>
+</body>
+</html>
