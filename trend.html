@@ -4,11 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>주식 수익률 비교 (상태 저장 기능 추가)</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 20px; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
         .container { width: 100%; max-width: 1200px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); position: relative; }
         
+        /* 상단 내비게이션 스타일 */
+        .nav-bar { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; border-bottom: 1px solid #eee; padding-bottom: 15px; }
+        .nav-link { 
+            text-decoration: none; color: #555; padding: 8px 12px; 
+            border: 1px solid #ddd; border-radius: 5px; background: #fff; 
+            display: flex; align-items: center; gap: 6px; font-size: 14px;
+            transition: all 0.2s;
+        }
+        .nav-link:hover { background: #f0f0f0; color: #007bff; border-color: #007bff; }
+        .nav-link.active { background: #007bff; color: white; border-color: #007bff; }
+
         .controls { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
         input[type="text"] { padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; flex-grow: 1; text-transform: uppercase; }
         button.add-btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; transition: background 0.2s; }
@@ -23,9 +35,8 @@
         #statusMessage { text-align: center; margin-bottom: 10px; font-size: 14px; height: 20px; }
 
         .nav-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .nav-buttons { display: flex; gap: 8px; }
         
-        .nav-btn { 
+        .reset-btn { 
             padding: 8px 16px; 
             color: white; 
             border: none; 
@@ -34,28 +45,25 @@
             font-size: 14px; 
             text-decoration: none;
             transition: background 0.2s;
+            background: #6c757d; 
         }
-        
-        .home-btn { background: #6c757d; }
-        .home-btn:hover { background: #5a6268; }
-
-        .top-btn { background: #28a745; }
-        .top-btn:hover { background: #218838; }
-
-        .reset-btn { background: #6c757d; }
         .reset-btn:hover { background: #5a6268; }
     </style>
 </head>
 <body>
 
     <div class="container">
+        <div class="nav-bar">
+            <a href="index.html" class="nav-link"><i class="fas fa-home"></i> 통합 뷰</a>
+            <a href="rebalancing.html" class="nav-link"><i class="fas fa-balance-scale"></i> 리밸런싱</a>
+            <a href="trend.html" class="nav-link active"><i class="fas fa-chart-line"></i> US 수익률</a>
+            <a href="k-trend.html" class="nav-link"><i class="fas fa-won-sign"></i> KR 수익률</a>
+            <a href="top_chart.html" class="nav-link"><i class="fas fa-trophy"></i> 시총 Top</a>
+        </div>
+
         <div class="nav-header">
             <h2 style="margin:0;">📈 주식 수익률 비교</h2>
-            <div class="nav-buttons">
-                <button class="nav-btn reset-btn" onclick="resetLines()">⟲ 보통선</button>
-                <button class="nav-btn top-btn" onclick="window.location.href='top_chart.html'">🏆 Top 차트</button>
-                <button class="nav-btn home-btn" onclick="window.location.href='index.html'">🏠 메인으로</button>
-            </div>
+            <button class="reset-btn" onclick="resetLines()">⟲ 보통선</button>
         </div>
         
         <p style="font-size: 0.9em; color: #666;">범례(종목명)를 클릭하여 <b>강조 -> 보통 -> 숨김</b> 순서로 변경할 수 있습니다. (상태 자동 저장)</p>
@@ -75,10 +83,8 @@
 
     <script>
         let myChart = null;
-        // symbols 구조 변경: [{ symbol: 'NVDA', state: 0 }, ...]
-        // state: 0(보통), 1(강조), 2(보통), 3(숨김)
         let symbols = []; 
-        const STORAGE_KEY = 'my_stock_symbols_v5_state'; // 키 변경하여 충돌 방지
+        const STORAGE_KEY = 'my_stock_symbols_v5_state'; 
         
         const colors = [
             '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', 
@@ -87,7 +93,6 @@
 
         window.onload = function() {
             loadSymbols();
-            // 데이터가 없으면 초기값 설정
             if (symbols.length === 0) {
                 symbols = [
                     { symbol: 'NVDA', state: 0 },
@@ -105,7 +110,6 @@
             if (stored) {
                 try {
                     const parsed = JSON.parse(stored);
-                    // 구버전(문자열 배열) 호환성 체크
                     if (parsed.length > 0 && typeof parsed[0] === 'string') {
                         symbols = parsed.map(s => ({ symbol: s, state: 0 }));
                     } else {
@@ -115,7 +119,6 @@
                     symbols = [];
                 }
             } else {
-                // 이전 버전 키가 있다면 마이그레이션 시도 (선택적)
                 const oldStored = localStorage.getItem('my_stock_symbols_v4');
                 if (oldStored) {
                     const oldArr = JSON.parse(oldStored);
@@ -128,12 +131,10 @@
             localStorage.setItem(STORAGE_KEY, JSON.stringify(symbols));
         }
 
-        // ★ 보통선 리셋 함수 추가
         function resetLines() {
             if (!myChart) return;
             let changed = false;
 
-            // 1. 데이터 업데이트: 강조(1) -> 보통(0)으로 변경. 숨김(3)은 유지.
             symbols.forEach(s => {
                 if(s.state === 1) {
                     s.state = 0;
@@ -144,11 +145,10 @@
             if (changed) {
                 saveSymbols();
 
-                // 2. 차트 뷰 업데이트
                 myChart.data.datasets.forEach(ds => {
                     if (ds.customState === 1) {
                         ds.customState = 0;
-                        ds.borderWidth = 2; // 보통 굵기로 리셋
+                        ds.borderWidth = 2; 
                     }
                 });
                 myChart.update();
@@ -162,14 +162,13 @@
             const val = input.value.trim().toUpperCase();
             if (!val) return;
             
-            // 중복 체크
             if (symbols.some(s => s.symbol === val)) {
                 showMessage('⚠️ 이미 존재하는 종목입니다.', 'orange');
                 input.value = '';
                 return;
             }
             
-            symbols.push({ symbol: val, state: 0 }); // 기본 상태 0
+            symbols.push({ symbol: val, state: 0 }); 
             saveSymbols();
             renderTags();
             input.value = '';
@@ -223,7 +222,6 @@
                         validDates.push(new Date(timestamps[i] * 1000).toISOString().slice(0, 10));
                     }
                 });
-                // 원래 객체 정보(state 포함)를 리턴
                 return { ...item, dates: validDates, prices: validData };
             } catch (e) {
                 console.error(e);
@@ -254,11 +252,9 @@
 
                 const color = colors[index % colors.length];
 
-                // 저장된 상태(state)에 따라 스타일 적용
                 let bWidth = 2;
                 let isHidden = false;
                 
-                // state: 0(보통), 1(강조), 2(보통), 3(숨김)
                 if (r.state === 1) bWidth = 8;
                 else if (r.state === 3) isHidden = true;
 
@@ -272,8 +268,7 @@
                     pointHoverRadius: 0, 
                     tension: 0.3,
                     fill: false,
-                    hidden: isHidden, // Chart.js 숨김 속성
-                    // 사용자 정의 속성 (클릭 핸들러에서 사용)
+                    hidden: isHidden, 
                     customState: r.state 
                 };
             });
@@ -306,38 +301,33 @@
                                 const ci = legend.chart;
                                 const dataset = ci.data.datasets[index];
                                 
-                                // 현재 상태 가져오기
                                 let currentState = dataset.customState;
                                 if (currentState === undefined) currentState = 0;
 
                                 let nextState;
-                                // 로직: 0(보통) -> 1(강조) -> 2(보통 복귀) -> 3(숨김) -> 1(강조) ...
                                 if (currentState === 0) nextState = 1;
                                 else if (currentState === 1) nextState = 2;
                                 else if (currentState === 2) nextState = 3;
                                 else if (currentState === 3) nextState = 1;
 
-                                // 시각적 적용
-                                if (nextState === 1) { // 강조
+                                if (nextState === 1) { 
                                     dataset.borderWidth = 8;
                                     ci.setDatasetVisibility(index, true);
-                                } else if (nextState === 2) { // 보통
+                                } else if (nextState === 2) { 
                                     dataset.borderWidth = 2;
                                     ci.setDatasetVisibility(index, true);
-                                } else if (nextState === 3) { // 숨김
+                                } else if (nextState === 3) { 
                                     ci.setDatasetVisibility(index, false);
                                     dataset.borderWidth = 2; 
                                 }
 
-                                // 상태 업데이트 및 로컬스토리지 저장
                                 dataset.customState = nextState;
                                 
-                                // symbols 배열 업데이트
                                 const symbolLabel = dataset.label;
                                 const target = symbols.find(s => s.symbol === symbolLabel);
                                 if (target) {
                                     target.state = nextState;
-                                    saveSymbols(); // ★ 저장
+                                    saveSymbols(); 
                                 }
 
                                 ci.update();

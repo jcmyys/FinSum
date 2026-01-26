@@ -9,13 +9,25 @@
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       margin: 20px;
     }
+    
+    /* 상단 내비게이션 스타일 */
+    .nav-bar { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; border-bottom: 1px solid #eee; padding-bottom: 15px; }
+    .nav-link { 
+      text-decoration: none; color: #555; padding: 8px 12px; 
+      border: 1px solid #ddd; border-radius: 5px; background: #fff; 
+      display: flex; align-items: center; gap: 6px; font-size: 14px;
+      transition: all 0.2s;
+    }
+    .nav-link:hover { background: #f0f0f0; color: #007bff; border-color: #007bff; }
+    .nav-link.active { background: #007bff; color: white; border-color: #007bff; }
+
     table {
       border-collapse: collapse;
       width: 100%;
       margin-top: 10px;
       text-align: center;
       margin-bottom: 40px;
-      table-layout: fixed; /* 칸 너비 고정 */
+      table-layout: fixed;
     }
     th, td {
       border: 1px solid #ccc;
@@ -102,25 +114,23 @@
     }
     
     .loading-overlay { opacity: 0.5; pointer-events: none; }
-    
-    .chart-button { background-color: #28a745; color: white; }
-    .chart-button:hover { background-color: #218838; }
-    
-    /* 추가: Trend 차트 버튼 스타일 (보라색 계열) */
-    .trend-button { background-color: #6f42c1; color: white; border: none; }
-    .trend-button:hover { background-color: #59359a; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
+  <div class="nav-bar">
+    <a href="index.html" class="nav-link active"><i class="fas fa-home"></i> 통합 뷰</a>
+    <a href="rebalancing.html" class="nav-link"><i class="fas fa-balance-scale"></i> 리밸런싱</a>
+    <a href="trend.html" class="nav-link"><i class="fas fa-chart-line"></i> US 수익률</a>
+    <a href="k-trend.html" class="nav-link"><i class="fas fa-won-sign"></i> KR 수익률</a>
+    <a href="top_chart.html" class="nav-link"><i class="fas fa-trophy"></i> 시총 Top</a>
+  </div>
+
   <div style="display:flex; justify-content:space-between; align-items:center;">
     <h3>📈 주식 종목 데이터 및 변곡점 분석</h3>
     <div>
       <button id="load-button" class="btn btn-primary"><i class="fas fa-sync-alt"></i> 데이터 불러오기</button>
-      <button id="trend-button" class="btn trend-button"><i class="fas fa-chart-area"></i> Trend 차트</button>
-      
-      <button id="top-button" class="btn chart-button"><i class="fas fa-chart-line"></i> Top 차트</button>
       <button id="transaction-button" class="btn"><i class="fas fa-file-invoice-dollar"></i> 매매기록</button>
     </div>
   </div>
@@ -165,7 +175,7 @@
     // [설정]
     const INFLECTION_THRESHOLD = 0.02; 
     const DAYS_TO_SHOW = 25; 
-    const decrementRate = 0.025;
+    const decrementRate = 0.05;
     const decrementRows = 15;
     const ITEMS_PER_PAGE = 9; 
     
@@ -711,9 +721,6 @@
 
     document.getElementById('load-button').addEventListener('click', onLoadButtonClick);
     document.getElementById('transaction-button').addEventListener('click', goToTransactionPage);
-    document.getElementById('top-button').addEventListener('click', function() {window.location.href = 'top_chart.html';});
-    // [추가된 이벤트 리스너]
-    document.getElementById('trend-button').addEventListener('click', function() {window.location.href = 'trend.html';});
     
     init();
   </script>

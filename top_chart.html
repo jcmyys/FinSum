@@ -3,24 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <title>미국 주식 시가총액 1~10위 (상태 저장 기능 추가)</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { 
+            margin: 0; padding: 20px; background: #f0f2f5; height: 100vh; 
+            display: flex; flex-direction: column; box-sizing: border-box; 
+        }
+
+        /* 상단 내비게이션 스타일 */
+        .nav-bar { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; flex-shrink: 0; }
+        .nav-link { 
+            text-decoration: none; color: #555; padding: 8px 12px; 
+            border: 1px solid #ddd; border-radius: 5px; background: #fff; 
+            display: flex; align-items: center; gap: 6px; font-size: 14px;
+            transition: all 0.2s;
+        }
+        .nav-link:hover { background: #f0f0f0; color: #007bff; border-color: #007bff; }
+        .nav-link.active { background: #007bff; color: white; border-color: #007bff; }
+
+        .chart-wrapper {
+            flex-grow: 1;
+            position: relative;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            overflow: hidden;
+            width: 100%;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .reset-btn { 
+            position: absolute; top: 20px; right: 20px; z-index: 10;
+            background-color: #6c757d; color: white; 
+            border: none; border-radius: 5px; cursor: pointer; font-size: 14px; padding: 8px 15px;
+        }
+        .reset-btn:hover { background-color: #5a6268; }
+    </style>
 </head>
-<style>
-    .chart-button { background-color: #28a745; color: white; }
-    .chart-button:hover { background-color: #218838; }
-    .reset-btn { background-color: #6c757d; color: white; }
-    .reset-btn:hover { background-color: #5a6268; }
-</style>
-<body style="margin:0;padding:20px;background:#f0f2f5;height:100vh;display:flex;align-items:center;justify-content:center;">
-    <div style="position: absolute; top: 20px; right: 20px; z-index: 1000; display: flex; gap: 10px;">
-        <button onclick="resetLines()" class="nav-btn reset-btn" style="padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
-            ⟲ 보통선
-        </button>
-        <button onclick="window.location.href='index.html'" class="nav-btn" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;"> 
-            ← 메인 페이지로 이동
-        </button>
+<body>
+
+    <div class="nav-bar">
+        <a href="index.html" class="nav-link"><i class="fas fa-home"></i> 통합 뷰</a>
+        <a href="rebalancing.html" class="nav-link"><i class="fas fa-balance-scale"></i> 리밸런싱</a>
+        <a href="trend.html" class="nav-link"><i class="fas fa-chart-line"></i> US 수익률</a>
+        <a href="k-trend.html" class="nav-link"><i class="fas fa-won-sign"></i> KR 수익률</a>
+        <a href="top_chart.html" class="nav-link active"><i class="fas fa-trophy"></i> 시총 Top</a>
     </div>
-    <canvas id="marketCapChart" style="max-width:1400px;max-height:800px;width:100%;height:100%;background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.1);"></canvas>
+
+    <div class="chart-wrapper">
+        <button onclick="resetLines()" class="reset-btn">⟲ 보통선</button>
+        <canvas id="marketCapChart"></canvas>
+    </div>
 
     <script>
         const symbols=['NVDA','MSFT','AAPL','GOOGL','AMZN','META','AVGO','TSLA','BRK-B','LLY'];
@@ -28,10 +63,9 @@
         const colors=['#00C49A','#FFBB28','#FF8042','#8884D8','#82CA9D','#A4DE6C','#D0ED57','#FF6B6B','#4ECDC4','#45B7D1'];
         const shares={'NVDA':24600000000,'MSFT':7430000000,'AAPL':15200000000,'GOOGL':12300000000,'AMZN':10450000000,'META':2600000000,'AVGO':4680000000,'TSLA':3200000000,'BRK-B':2160000000,'LLY':950000000};
         
-        // ★ 상태 저장/로드 로직
         const STATE_STORAGE_KEY = 'top_chart_states_v1';
-        let savedStates = {}; // { 'NVDA': 1, 'AAPL': 0 ... }
-        let myChart = null; // 차트 인스턴스 전역 변수
+        let savedStates = {}; 
+        let myChart = null; 
 
         function loadStates() {
             const s = localStorage.getItem(STATE_STORAGE_KEY);
@@ -41,13 +75,11 @@
             localStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(savedStates));
         }
 
-        // ★ 보통선 리셋 함수 추가
         function resetLines() {
             if (!myChart) return;
             
             let changed = false;
             myChart.data.datasets.forEach(ds => {
-                // 상태가 1(강조)인 경우에만 0(보통)으로 변경. 숨김(3)은 유지.
                 if (ds.toggleState === 1) {
                     ds.toggleState = 0;
                     ds.borderWidth = 3;
@@ -62,10 +94,8 @@
             }
         }
 
-        // 초기 로드
         loadStates();
 
-        // 90일 (3개월) 데이터
         const dtEnd=Math.floor(Date.now()/1000);
         const dtStart=dtEnd-(90*24*60*60); 
 
@@ -116,7 +146,6 @@
                     return idx > -1 ? r.marketCaps[idx] : null;
                 });
 
-                // 저장된 상태 불러오기 (기본값 0)
                 const state = savedStates[r.symbol] || 0;
                 let bWidth = 3;
                 let isHidden = false;
@@ -126,17 +155,17 @@
 
                 return {
                     label: names[r.symbol] || r.symbol,
-                    symbolKey: r.symbol, // 식별용 키
+                    symbolKey: r.symbol, 
                     data: data,
                     borderColor: colors[i % colors.length],
                     backgroundColor: colors[i % colors.length] + '33',
                     fill: false,
                     tension: 0.3,
                     borderWidth: bWidth,
-                    hidden: isHidden, // 초기 숨김 적용
+                    hidden: isHidden, 
                     pointRadius: 1,
                     pointHoverRadius: 5,
-                    toggleState: state // 현재 상태 저장
+                    toggleState: state 
                 };
             });
 
@@ -161,8 +190,6 @@
                                 }
 
                                 let nextState;
-                                // 0->1->2->3->1 순환 (기존 로직 유지)
-                                // 0:보통, 1:두꺼움, 2:보통복귀, 3:숨김
                                 if (dataset.toggleState === 0) nextState = 1;
                                 else if (dataset.toggleState === 1) nextState = 2;
                                 else if (dataset.toggleState === 2) nextState = 3;
@@ -181,7 +208,6 @@
 
                                 dataset.toggleState = nextState;
                                 
-                                // ★ 상태 저장
                                 savedStates[sym] = nextState;
                                 saveStates();
 
