@@ -10,7 +10,6 @@
       margin: 20px;
     }
     
-    /* 상단 내비게이션 스타일 */
     .nav-bar { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; border-bottom: 1px solid #eee; padding-bottom: 15px; }
     .nav-link { 
       text-decoration: none; color: #555; padding: 8px 12px; 
@@ -60,7 +59,6 @@
     .ticker-input:focus { outline: none; background-color: #fff; border-bottom: 2px solid blue; }
     .price-label { margin-left: 5px; color: blue; font-weight: bold; font-size: 0.8em; display: block; }
 
-    /* 버튼 스타일 */
     .btn {
       padding: 8px 15px;
       font-size: 14px;
@@ -79,7 +77,6 @@
     #transaction-button { background-color: #ffcccc; border: 1px solid #ff9999; }
     #transaction-button:hover { background-color: #ff9999; }
 
-    /* 페이지네이션 스타일 */
     .pagination-container {
       display: flex;
       align-items: center;
@@ -106,11 +103,12 @@
 
     .ratio-box {
       margin-top: 20px;
-      font-size: 16px;
-      padding: 10px;
+      font-size: 15px;
+      padding: 15px;
       background: #f5f5f5;
       border-radius: 8px;
-      width: 380px;
+      width: 420px;
+      line-height: 1.6;
     }
     
     .loading-overlay { opacity: 0.5; pointer-events: none; }
@@ -171,8 +169,12 @@
     </table>
   </div>
 
+  <h3>🇺🇸 미국 시가총액 1~4위 실시간 변화</h3>
+  <div id="desc" style="font-size: 14px; color: #666; margin-bottom: 5px;">데이터 로딩 중...</div>
+  <canvas id="marketCapChart" width="720" height="340"></canvas>
+  <div class="ratio-box" id="ratios"></div>
+
   <script>
-    // [설정]
     const INFLECTION_THRESHOLD = 0.02; 
     const DAYS_TO_SHOW = 25; 
     const decrementRate = 0.05;
@@ -183,15 +185,16 @@
     const STORAGE_KEY_SYMBOLS = 'stockSymbols_v3';
     const STORAGE_KEY_CUR_PAGE = 'stockCurrentPage';
 
+    // 프록시 서버 IP 설정 (본인 서버 IP)
+    const PROXY_SERVER = "http://134.185.108.103:3000/proxy?url=";
+
     const defaultSymbols = ['GOOGL', 'SPYM', 'AAPL', 'NVDA', 'AMD', 'UEC', 'AMZN', 'TSLA', 'MSFT'];
     
     let symbols = [];
     let basePrices = {};
     let allStockData = {}; 
-    
     let latest52Highs = {}; 
     let latest52Lows = {};  
-
     let latestClosePrices = {};
     let currentPage = 1;
 
@@ -294,72 +297,57 @@
 
     async function fetchSymbolData(symbol) {
       if (!symbol) return { history: null, high52: null, low52: null };
-      const chartUrl = `https://corsproxy.io/?https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=3mo`;
+      const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=3mo`;
+      const chartUrl = PROXY_SERVER + encodeURIComponent(yahooUrl);
       
-      let chartData;
       try {
         const chartRes = await fetch(chartUrl);
         if (!chartRes.ok) throw new Error("Chart network error");
-        chartData = await chartRes.json();
+        const chartData = await chartRes.json();
+
+        if (!chartData.chart?.result?.[0]) throw new Error("No chart data");
+        const result = chartData.chart.result[0];
+        const timestamps = result.timestamp;
+        const quotes = result.indicators.quote[0];
+        
+        const closePrices = {};
+        if (timestamps && quotes.close) {
+          timestamps.forEach((ts, index) => {
+            if (quotes.close[index] !== null) {
+              const date = new Date(ts * 1000).toISOString().split('T')[0];
+              closePrices[date] = parseFloat(quotes.close[index]);
+            }
+          });
+        }
+
+        let high52 = result.meta?.fiftyTwoWeekHigh || null;
+        let low52 = result.meta?.fiftyTwoWeekLow || null;
+
+        return { history: closePrices, high52, low52 };
       } catch (e) {
         console.error(`Fetch failed for ${symbol}`, e);
         throw e;
       }
-
-      if (!chartData.chart || !chartData.chart.result || chartData.chart.result.length === 0) {
-          throw new Error("No chart data");
-      }
-      const result = chartData.chart.result[0];
-      const timestamps = result.timestamp;
-      const quotes = result.indicators.quote[0];
-      
-      const closePrices = {};
-      if (timestamps && quotes.close) {
-        timestamps.forEach((ts, index) => {
-          if (quotes.close[index] !== null) {
-            const date = new Date(ts * 1000).toISOString().split('T')[0];
-            closePrices[date] = parseFloat(quotes.close[index]);
-          }
-        });
-      }
-
-      let high52 = null, low52 = null;
-      if (result.meta) {
-          if (result.meta.fiftyTwoWeekHigh) high52 = result.meta.fiftyTwoWeekHigh;
-          if (result.meta.fiftyTwoWeekLow) low52 = result.meta.fiftyTwoWeekLow;
-      }
-
-      return { history: closePrices, high52: high52, low52: low52 };
     }
 
     async function fetchAllStockData() {
       const validSymbols = symbols.filter(s => s !== "");
-      
       const promises = validSymbols.map(async (sym) => {
         try {
           const { history, high52, low52 } = await fetchSymbolData(sym);
-          
           if(history) allStockData[sym] = history;
-          
           latest52Highs[sym] = high52;
           latest52Lows[sym] = low52;
-
         } catch (e) {
-          console.error(`Error fetching ${sym}:`, e);
           allStockData[sym] = {}; 
-          latest52Highs[sym] = null;
-          latest52Lows[sym] = null;
         }
       });
-      
       await Promise.all(promises);
     }
 
     async function handleTickerChange(globalIndex, newTicker) {
       newTicker = newTicker.toUpperCase().trim();
-      const oldTicker = symbols[globalIndex];
-
-      if (newTicker === oldTicker) return;
+      if (newTicker === symbols[globalIndex]) return;
       if (newTicker !== "" && symbols.includes(newTicker)) {
         alert("이미 존재하는 종목입니다.");
         renderAll(); 
@@ -374,29 +362,19 @@
       }
 
       try {
-        const inputEls = document.querySelectorAll('.ticker-input');
-        const localIndex = globalIndex % ITEMS_PER_PAGE;
-        if(inputEls[localIndex]) inputEls[localIndex].style.color = '#999';
-
         const { history, high52, low52 } = await fetchSymbolData(newTicker);
-        
         symbols[globalIndex] = newTicker;
         saveSymbols();
-
-        if (oldTicker && allStockData[oldTicker]) delete allStockData[oldTicker];
         allStockData[newTicker] = history;
         latest52Highs[newTicker] = high52;
         latest52Lows[newTicker] = low52;
 
-        basePrices[newTicker] = 0;
         const dates = Object.keys(history).sort((a, b) => b.localeCompare(a));
         if (dates.length > 0) {
           basePrices[newTicker] = parseFloat(history[dates[0]].toFixed(2));
-          alert(`[${newTicker}] 추가 완료.\n현재가: ${basePrices[newTicker]}`);
         }
         saveBasePrices();
         renderAll();
-
       } catch (e) {
         alert(`'${newTicker}' 정보를 가져올 수 없습니다.`);
         renderAll();
@@ -408,9 +386,9 @@
       const dates = Object.keys(pricesObj).sort(); 
       if (dates.length < 2) return null;
 
-      let startIndex = 0;
       let startPrice = pricesObj[dates[0]];
       let currentTrend = null; 
+      let startIndex = 0;
       
       for (let i = 1; i < dates.length; i++) {
         const p = pricesObj[dates[i]];
@@ -458,8 +436,7 @@
 
     function getCurrentPageSymbols() {
       const start = (currentPage - 1) * ITEMS_PER_PAGE;
-      const end = start + ITEMS_PER_PAGE;
-      return symbols.slice(start, end).map((sym, i) => ({
+      return symbols.slice(start, start + ITEMS_PER_PAGE).map((sym, i) => ({
         symbol: sym,
         globalIndex: start + i
       }));
@@ -468,11 +445,7 @@
     function renderStockTable() {
       const pageSymbols = getCurrentPageSymbols();
       const theadRow = document.querySelector('#stock-table thead tr');
-      theadRow.innerHTML = ''; 
-
-      const thLabel = document.createElement('th');
-      thLabel.textContent = '날짜/구분';
-      theadRow.appendChild(thLabel);
+      theadRow.innerHTML = '<th>날짜/구분</th>';
 
       pageSymbols.forEach((item) => {
         const th = document.createElement('th');
@@ -480,7 +453,6 @@
         input.type = 'text';
         input.className = 'ticker-input';
         input.value = item.symbol;
-        input.placeholder = "입력";
         input.onchange = (e) => handleTickerChange(item.globalIndex, e.target.value);
         th.appendChild(input);
         theadRow.appendChild(th);
@@ -494,31 +466,24 @@
 
       pageSymbols.forEach(item => {
         const sym = item.symbol;
-        if (!sym) return; 
-        const data = allStockData[sym];
-        if (data && Object.keys(data).length > 0) {
-            const prices = Object.values(data);
+        if (sym && allStockData[sym]) {
+            const prices = Object.values(allStockData[sym]);
             highestPrices[sym] = Math.max(...prices);
             lowestPrices[sym] = Math.min(...prices);
-            const dates = Object.keys(data).sort((a, b) => b.localeCompare(a));
-            latestClosePrices[sym] = data[dates[0]];
-        } else {
-            highestPrices[sym] = 0; lowestPrices[sym] = 0; latestClosePrices[sym] = 0;
+            const dates = Object.keys(allStockData[sym]).sort((a, b) => b.localeCompare(a));
+            latestClosePrices[sym] = allStockData[sym][dates[0]];
         }
       });
 
       const createRow = (className, label) => {
         const tr = document.createElement('tr');
         tr.className = className;
-        const td = document.createElement('td');
-        td.textContent = label;
-        tr.appendChild(td);
+        tr.innerHTML = `<td>${label}</td>`;
         return tr;
       };
 
       const row52High = createRow('price-val-row', '52주 최고');
       const row52Low = createRow('price-val-row', '52주 최저');
-
       const rowRisePct = createRow('rise-row', '저점 대비 상승');
       const rowLowVal = createRow('price-val-row', '저점값');
       const rowDropPct = createRow('fall-row', '고점 대비 하락');
@@ -535,74 +500,37 @@
            .forEach(r => r.innerHTML += '<td></td>');
            return;
         }
+        row52High.innerHTML += `<td>${latest52Highs[sym]?.toFixed(2) || '-'}</td>`;
+        row52Low.innerHTML += `<td>${latest52Lows[sym]?.toFixed(2) || '-'}</td>`;
 
-        const h52 = latest52Highs[sym];
-        const l52 = latest52Lows[sym];
+        const cur = latestClosePrices[sym], lo = lowestPrices[sym], hi = highestPrices[sym];
+        rowRisePct.innerHTML += `<td>${(cur && lo) ? '+' + (((cur - lo) / lo) * 100).toFixed(2) + '%' : '-'}</td>`;
+        rowLowVal.innerHTML += `<td>${lo?.toFixed(2) || '-'}</td>`;
+        rowDropPct.innerHTML += `<td>${(cur && hi) ? (((cur - hi) / hi) * 100).toFixed(2) + '%' : '-'}</td>`;
+        rowHighVal.innerHTML += `<td>${hi?.toFixed(2) || '-'}</td>`;
 
-        row52High.innerHTML += `<td>${h52 ? h52.toFixed(2) : '-'}</td>`;
-        row52Low.innerHTML += `<td>${l52 ? l52.toFixed(2) : '-'}</td>`;
-
-        const current = latestClosePrices[sym];
-        const low = lowestPrices[sym];
-        const high = highestPrices[sym];
-        const inflection = getLatestInflectionPoint(allStockData[sym], INFLECTION_THRESHOLD);
-
-        if (current && low) {
-            rowRisePct.innerHTML += `<td>+${(((current - low) / low) * 100).toFixed(2)}%</td>`;
-            rowLowVal.innerHTML += `<td>${low.toFixed(2)}</td>`;
-        } else {
-            rowRisePct.innerHTML += '<td>-</td>'; rowLowVal.innerHTML += '<td>-</td>';
+        const inf = getLatestInflectionPoint(allStockData[sym], INFLECTION_THRESHOLD);
+        let rebP = '-', rebV = '-', pulP = '-', pulV = '-';
+        if (inf && cur) {
+          if (inf.type === 'LOW') { rebP = `+${((cur - inf.price)/inf.price*100).toFixed(2)}%`; rebV = inf.price.toFixed(2); }
+          else { pulP = `${((cur - inf.price)/inf.price*100).toFixed(2)}%`; pulV = inf.price.toFixed(2); }
         }
-
-        if (current && high) {
-            rowDropPct.innerHTML += `<td>${(((current - high) / high) * 100).toFixed(2)}%</td>`;
-            rowHighVal.innerHTML += `<td>${high.toFixed(2)}</td>`;
-        } else {
-            rowDropPct.innerHTML += '<td>-</td>'; rowHighVal.innerHTML += '<td>-</td>';
-        }
-
-        let rebPct = '-', rebVal = '-', pullPct = '-', pullVal = '-';
-        if (inflection && current) {
-          if (inflection.type === 'LOW') {
-            rebPct = `+${((current - inflection.price)/inflection.price*100).toFixed(2)}%`;
-            rebVal = inflection.price.toFixed(2);
-          } else if (inflection.type === 'HIGH') {
-            pullPct = `${((current - inflection.price)/inflection.price*100).toFixed(2)}%`;
-            pullVal = inflection.price.toFixed(2);
-          }
-        }
-        rowReboundPct.innerHTML += `<td>${rebPct}</td>`;
-        rowReboundVal.innerHTML += `<td>${rebVal}</td>`;
-        rowPullbackPct.innerHTML += `<td>${pullPct}</td>`;
-        rowPullbackVal.innerHTML += `<td>${pullVal}</td>`;
+        rowReboundPct.innerHTML += `<td>${rebP}</td>`;
+        rowReboundVal.innerHTML += `<td>${rebV}</td>`;
+        rowPullbackPct.innerHTML += `<td>${pulP}</td>`;
+        rowPullbackVal.innerHTML += `<td>${pulV}</td>`;
       });
 
-      tbody.append(row52High, row52Low,
-                   rowRisePct, rowLowVal, rowDropPct, rowHighVal, rowReboundPct, rowReboundVal, rowPullbackPct, rowPullbackVal);
+      tbody.append(row52High, row52Low, rowRisePct, rowLowVal, rowDropPct, rowHighVal, rowReboundPct, rowReboundVal, rowPullbackPct, rowPullbackVal);
 
-      const datesSet = new Set();
-      symbols.forEach(sym => {
-        if(sym && allStockData[sym]) Object.keys(allStockData[sym]).forEach(d => datesSet.add(d));
-      });
-      const dates = Array.from(datesSet).sort((a, b) => b.localeCompare(a)).slice(0, DAYS_TO_SHOW);
-
-      dates.forEach(date => {
+      const allDates = [...new Set(Object.values(allStockData).flatMap(d => Object.keys(d)))].sort((a,b) => b.localeCompare(a)).slice(0, DAYS_TO_SHOW);
+      allDates.forEach(date => {
         const tr = document.createElement('tr');
-        let rowHtml = `<td>${date}</td>`;
+        tr.innerHTML = `<td>${date}</td>`;
         pageSymbols.forEach(item => {
-          const sym = item.symbol;
-          if (!sym) { rowHtml += '<td></td>'; return; }
-
-          const price = allStockData[sym] ? allStockData[sym][date] : undefined;
-          if (price !== undefined) {
-            rowHtml += price === highestPrices[sym]
-              ? `<td class="highest">${price.toFixed(2)}</td>`
-              : `<td>${price.toFixed(2)}</td>`;
-          } else {
-            rowHtml += '<td>-</td>';
-          }
+          const p = allStockData[item.symbol]?.[date];
+          tr.innerHTML += p ? `<td class="${p === highestPrices[item.symbol] ? 'highest' : ''}">${p.toFixed(2)}</td>` : '<td>-</td>';
         });
-        tr.innerHTML = rowHtml;
         tbody.appendChild(tr);
       });
     }
@@ -611,30 +539,17 @@
       const pageSymbols = getCurrentPageSymbols();
       const symbolsRow = document.getElementById('symbols-row');
       const basePriceRow = document.getElementById('base-price-row');
-      
       symbolsRow.innerHTML = '<th></th>';
       basePriceRow.innerHTML = '<td>기준가격</td>';
 
       pageSymbols.forEach(item => {
         const sym = item.symbol;
-        const th = document.createElement('th');
-        th.textContent = sym || "(비어있음)";
-        symbolsRow.appendChild(th);
-
+        symbolsRow.innerHTML += `<th>${sym || "(비어있음)"}</th>`;
         const td = document.createElement('td');
         if (sym) {
             const input = document.createElement('input');
-            input.type = 'number';
-            input.step = '0.01';
-            input.value = parseFloat(basePrices[sym] || 0).toFixed(2);
-            input.addEventListener('change', () => {
-              const val = parseFloat(input.value);
-              if (!isNaN(val)) {
-                basePrices[sym] = val;
-                saveBasePrices();
-                renderPriceLevelsTable();
-              }
-            });
+            input.type = 'number'; input.step = '0.01'; input.value = parseFloat(basePrices[sym] || 0).toFixed(2);
+            input.onchange = () => { basePrices[sym] = parseFloat(input.value); saveBasePrices(); renderPriceLevelsTable(); };
             td.appendChild(input);
         }
         basePriceRow.appendChild(td);
@@ -645,28 +560,16 @@
       const pageSymbols = getCurrentPageSymbols();
       const tbody = document.getElementById('price-level-rows');
       tbody.innerHTML = '';
-
       for (let i = 0; i < decrementRows; i++) {
         const tr = document.createElement('tr');
-        const labelTd = document.createElement('td');
-        labelTd.textContent = (100 - decrementRate * i * 100).toFixed(2) + '% 기준가';
-        tr.appendChild(labelTd);
-
+        tr.innerHTML = `<td>${(100 - decrementRate * i * 100).toFixed(2)}% 기준가</td>`;
         pageSymbols.forEach(item => {
           const sym = item.symbol;
-          const td = document.createElement('td');
           if (sym) {
-              const levelPrice = (basePrices[sym] || 0) * (1 - decrementRate * i);
-              td.textContent = levelPrice.toFixed(2);
-              const closePrice = latestClosePrices[sym];
-              if (closePrice && closePrice < levelPrice) {
-                const span = document.createElement('span');
-                span.className = 'price-label';
-                span.textContent = closePrice.toFixed(2);
-                td.appendChild(span);
-              }
-          }
-          tr.appendChild(td);
+              const lv = (basePrices[sym] || 0) * (1 - decrementRate * i);
+              const cur = latestClosePrices[sym];
+              tr.innerHTML += `<td>${lv.toFixed(2)}${ (cur && cur < lv) ? `<span class="price-label">${cur.toFixed(2)}</span>` : ''}</td>`;
+          } else tr.innerHTML += '<td></td>';
         });
         tbody.appendChild(tr);
       }
@@ -674,121 +577,114 @@
 
     async function onLoadButtonClick() {
       const btn = document.getElementById('load-button');
-      const container = document.getElementById('table-container');
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 로딩 중...';
-      container.classList.add('loading-overlay');
+      btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 로딩 중...';
+      document.getElementById('table-container').classList.add('loading-overlay');
       
       await fetchAllStockData();
       
-      let pricesUpdated = false;
       symbols.forEach(sym => {
-        if (!sym) return;
-        const data = allStockData[sym];
-        if (data) {
-            const dates = Object.keys(data).sort((a,b)=>b.localeCompare(a));
-            const latest = data[dates[0]];
-            if (latest) {
-                if (basePrices[sym] === 0 || latest > basePrices[sym]) {
-                    basePrices[sym] = parseFloat(latest.toFixed(2));
-                    pricesUpdated = true;
-                }
-            }
+        if (sym && allStockData[sym]) {
+            const dates = Object.keys(allStockData[sym]).sort((a,b)=>b.localeCompare(a));
+            const latest = allStockData[sym][dates[0]];
+            if (latest && (basePrices[sym] === 0 || latest > basePrices[sym])) basePrices[sym] = parseFloat(latest.toFixed(2));
         }
       });
-      if (pricesUpdated) saveBasePrices();
-
+      saveBasePrices();
       renderAll();
       
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-sync-alt"></i> 데이터 불러오기';
-      container.classList.remove('loading-overlay');
+      btn.disabled = false; btn.innerHTML = '<i class="fas fa-sync-alt"></i> 데이터 불러오기';
+      document.getElementById('table-container').classList.remove('loading-overlay');
     }
 
     function goToTransactionPage() {
-      if (Object.keys(latestClosePrices).length === 0) {
-          alert("주가 정보가 없습니다. 먼저 '데이터 불러오기'를 실행해주세요.");
-          return;
-      }
+      if (Object.keys(latestClosePrices).length === 0) { alert("데이터를 먼저 불러오세요."); return; }
       localStorage.setItem('latestPrices', JSON.stringify(latestClosePrices));
       window.location.href = 'https://jcmyys.infinityfree.me/AssetDonut2/transaction.php';
     }
 
-    function init() {
-      loadSettings();
-      renderAll();
-    }
-
-    document.getElementById('load-button').addEventListener('click', onLoadButtonClick);
-    document.getElementById('transaction-button').addEventListener('click', goToTransactionPage);
-    
-    init();
-  </script>
-
-  <h3>🇺🇸 미국 시가총액 1~4위 한달간 변화</h3>
-  <div id="desc"></div>
-  <canvas id="marketCapChart" width="720" height="340"></canvas>
-  <div class="ratio-box" id="ratios"></div>
-  <script>
+    // --- 시가총액 실시간 변화 및 모든 조합 비율 계산 루틴 ---
     const symbols2 = ['NVDA', 'MSFT', 'AAPL', 'GOOGL'];
     const names = ['NVIDIA', 'Microsoft', 'Apple', 'Alphabet'];
     const shares = { 'NVDA': 24300000000, 'MSFT': 7430000000, 'AAPL': 14860000000, 'GOOGL': 12038760000 };
     const dtEnd = Math.floor(Date.now()/1000);
-    const dtStart = dtEnd - (60*60*24*30);
+    const dtStart = dtEnd - (60*60*24*45);
 
     async function fetchHistory(symbol) {
-      const url = `https://corsproxy.io/?https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${dtStart}&period2=${dtEnd}&interval=1d`;
+      const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${dtStart}&period2=${dtEnd}&interval=1d`;
+      const url = PROXY_SERVER + encodeURIComponent(yahooUrl);
       try {
         const r = await fetch(url);
-        if (!r.ok) throw new Error("Chart fetch failed");
         const j = await r.json();
-        const timestamps = j.chart.result[0].timestamp;
-        const closes = j.chart.result[0].indicators.adjclose[0].adjclose;
-        const dates = timestamps.map(ts => new Date(ts * 1000).toISOString().slice(0,10));
-        const marketCaps = closes.map(close => +(close * shares[symbol] / 1e12).toFixed(2));
-        return {dates, marketCaps};
-      } catch(e) { console.error(e); return {dates:[], marketCaps:[]}; }
+        if(!j.chart?.result?.[0]) return null;
+        const res = j.chart.result[0];
+        const timestamps = res.timestamp || [];
+        const closes = res.indicators.adjclose?.[0].adjclose || res.indicators.quote[0].close || [];
+        return timestamps.map((ts, i) => ({
+          date: new Date(ts * 1000).toISOString().slice(0,10),
+          cap: closes[i] ? +(closes[i] * shares[symbol] / 1e12).toFixed(2) : null
+        })).filter(item => item.cap !== null);
+      } catch(e) { return null; }
     }
 
     async function main() {
-      const res = await Promise.all(symbols2.map(fetchHistory));
-      if(!res[0] || res[0].dates.length === 0) return;
-      const labels = res[0].dates;
-      const s1 = res[0].marketCaps, s2 = res[1].marketCaps, s3 = res[2].marketCaps, s4 = res[3].marketCaps;
-      const n = labels.length - 1;
-      const latestCaps = [
-          {name: names[0], cap: s1[n]}, {name: names[1], cap: s2[n]},
-          {name: names[2], cap: s3[n]}, {name: names[3], cap: s4[n]}
-      ].sort((a,b)=>b.cap-a.cap);
+      const results = await Promise.all(symbols2.map(fetchHistory));
+      const validResults = results.filter(r => r && r.length > 0);
+      if(validResults.length === 0) {
+        document.getElementById('desc').innerHTML = "⚠️ 데이터를 불러오지 못했습니다.";
+        return;
+      }
+      const allDates = [...new Set(validResults.flat().map(d => d.date))].sort();
+      const datasets = symbols2.map((sym, i) => {
+        const dataMap = Object.fromEntries((results[i] || []).map(d => [d.date, d.cap]));
+        return {
+          label: names[i],
+          data: allDates.map(date => dataMap[date] || null),
+          borderColor: ['#3cb44b', '#0082c8', '#f58231', '#911eb4'][i],
+          fill: false, tension: 0.25, spanGaps: true
+        };
+      });
 
       new Chart(document.getElementById('marketCapChart'), {
-          type: 'line',
-          data: {
-              labels: labels,
-              datasets: [
-                  { label: names[0], data: s1, borderColor: 'rgb(60,180,75)', fill: false, tension: 0.25 },
-                  { label: names[1], data: s2, borderColor: 'rgb(0,130,200)', fill: false, tension: 0.25 },
-                  { label: names[2], data: s3, borderColor: 'rgb(245,130,48)', fill: false, tension: 0.25 },
-                  { label: names[3], data: s4, borderColor: 'rgb(145,30,180)', fill: false, tension: 0.25 }
-              ]
-          },
-          options: {
-              responsive: false,
-              plugins: { legend: { position: 'top' } },
-              scales: { y: { title: { display: true, text: '시가총액 (Trillion USD)' } } }
-          }
+        type: 'line',
+        data: { labels: allDates, datasets },
+        options: {
+          responsive: false, interaction: { mode: 'index', intersect: false },
+          scales: { y: { title: { display: true, text: '시총 (Trillion USD)' } } }
+        }
       });
-      document.getElementById('desc').innerHTML = `${labels[0]} ~ ${labels[n]} 기준 데이터 (단위: Trillion USD)`;
-      document.getElementById('ratios').innerHTML = `
-          <strong>실시간 시총 기준</strong><br>
-          1등: ${latestCaps[0].name} (${latestCaps[0].cap}조)<br>
-          2등: ${latestCaps[1].name} (${latestCaps[1].cap}조)<br>
-          3등: ${latestCaps[2].name} (${latestCaps[2].cap}조)<br>
-          4등: ${latestCaps[3].name} (${latestCaps[3].cap}조)<br><br>
-          ${latestCaps[0].name} / ${latestCaps[1].name} = <b>${(latestCaps[0].cap / latestCaps[1].cap).toFixed(2)}</b><br>
-          ${latestCaps[1].name} / ${latestCaps[2].name} = <b>${(latestCaps[1].cap / latestCaps[2].cap).toFixed(2)}</b>
-      `;
+
+      // 시총 순위별 정렬
+      const latestInfo = symbols2.map((sym, i) => ({
+        name: names[i], cap: (results[i] && results[i].length > 0) ? results[i][results[i].length - 1].cap : 0
+      })).sort((a, b) => b.cap - a.cap);
+
+      document.getElementById('desc').innerHTML = `${allDates[0]} ~ ${allDates[allDates.length-1]} 데이터`;
+      
+      // 모든 조합에 대한 비율 계산 루틴 (1vs2, 1vs3, 1vs4, 2vs3, 2vs4, 3vs4)
+      let ratioHtml = "<strong>실시간 시총 순위 및 상세 비율</strong><br>";
+      latestInfo.forEach((item, idx) => {
+          ratioHtml += `${idx + 1}등: ${item.name} (${item.cap}T)${(idx % 2 === 0) ? ' / ' : '<br>'}`;
+      });
+      
+      ratioHtml += "<hr style='border:0; border-top:1px solid #ddd; margin:10px 0;'><strong>종목 간 상대 시총 비율</strong><br><div style='display:grid; grid-template-columns: 1fr 1fr; gap:5px;'>";
+      
+      for (let i = 0; i < latestInfo.length; i++) {
+          for (let j = i + 1; j < latestInfo.length; j++) {
+              const val1 = latestInfo[i].cap;
+              const val2 = latestInfo[j].cap;
+              const ratio = val2 > 0 ? (val1 / val2).toFixed(2) : "N/A";
+              ratioHtml += `<span>${latestInfo[i].name}/${latestInfo[j].name}: <b>${ratio}</b></span>`;
+          }
+      }
+      ratioHtml += "</div>";
+
+      document.getElementById('ratios').innerHTML = ratioHtml;
     }
+
+    document.getElementById('load-button').onclick = onLoadButtonClick;
+    document.getElementById('transaction-button').onclick = goToTransactionPage;
+    loadSettings();
+    renderAll();
     main();
   </script>
 </body>
