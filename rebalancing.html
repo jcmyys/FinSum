@@ -10,7 +10,7 @@
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 20px; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
         .container { width: 100%; max-width: 1200px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); position: relative; }
         
-        /* 상단 내비게이션 스타일 추가 */
+        /* 상단 내비게이션 스타일 */
         .nav-bar { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; border-bottom: 1px solid #eee; padding-bottom: 15px; }
         .nav-link { 
             text-decoration: none; color: #555; padding: 8px 12px; 
@@ -85,7 +85,11 @@
 
         <div class="nav-header">
             <h2 style="margin:0;">⚖️ 리밸런싱 차트</h2>
+            <div>
+                <button class="nav-btn" style="background: #6c757d;" onclick="resetLines()">⟲ 보통선</button>
+                <button class="nav-btn" style="background: #dc3545; margin-left: 5px;" onclick="hideAllLines()">∅ 모두 숨김</button>
             </div>
+        </div>
         
         <div class="controls">
             <div class="input-group">
@@ -149,16 +153,27 @@
             if (stored) {
                 try {
                     const parsed = JSON.parse(stored);
-                    if (parsed.length > 0 && typeof parsed[0] === 'string') {
-                        symbols = parsed.map(s => ({ symbol: s, basePrice: null, dropRate: 2.5 }));
-                    } else {
-                        symbols = parsed;
-                    }
+                    symbols = parsed;
                 } catch(e) { symbols = []; }
             }
         }
 
         function saveSymbols() { localStorage.setItem(STORAGE_KEY, JSON.stringify(symbols)); }
+        
+        // 새로 추가된 모두 숨김 함수
+        function hideAllLines() {
+            if (!myChart) return;
+            myChart.setDatasetVisibility(0, false);
+            myChart.update();
+        }
+
+        // 보통선 버튼 클릭 시 차트를 다시 그림 (초기화 및 표시)
+        function resetLines() {
+            if (currentSymbol) {
+                selectSymbol(currentSymbol);
+            }
+        }
+
         function handleEnter(e) { if (e.key === 'Enter') addSymbol(); }
 
         function addSymbol() {
@@ -187,8 +202,6 @@
                     currentSymbol = null;
                     destroyChart();
                     renderTags();
-                    document.getElementById('dropRate').value = 2.5;
-                    document.getElementById('basePrice').value = '';
                 }
             } else {
                 renderTags();
@@ -229,8 +242,7 @@
         function updateChartSettings() {
             const dropInput = document.getElementById('dropRate').value;
             const priceInput = document.getElementById('basePrice').value;
-            configDropRate = parseFloat(dropInput);
-            if (isNaN(configDropRate)) configDropRate = 2.5;
+            configDropRate = parseFloat(dropInput) || 2.5;
             configBasePrice = priceInput ? parseFloat(priceInput) : null;
             if (currentSymbol) {
                 const target = symbols.find(s => s.symbol === currentSymbol);
@@ -257,7 +269,6 @@
 
             try {
                 const res = await fetch(url);
-                if (!res.ok) throw new Error('Network Error');
                 const json = await res.json();
                 const result = json.chart.result[0];
                 const timestamps = result.timestamp;
@@ -275,25 +286,19 @@
                 showMessage('✅ 업데이트 완료', 'green');
                 setTimeout(() => showMessage(''), 2000);
             } catch (e) {
-                console.error(e);
                 showMessage(`❌ ${symbol} 로드 실패`, 'red');
             }
         }
 
         const horizontalLinesPlugin = {
             id: 'horizontalLines',
-            afterDatasetsDraw(chart, args, options) {
-                const { ctx, chartArea: { top, bottom, left, right }, scales: { y }, width } = chart;
-                
-                if (!currentData || currentData.prices.length === 0) return;
+            afterDatasetsDraw(chart) {
+                const { ctx, chartArea: { top, bottom, left }, scales: { y }, width } = chart;
+                if (!currentData || currentData.prices.length === 0 || !chart.isDatasetVisible(0)) return;
 
                 const maxPrice = Math.max(...currentData.prices);
                 const base = configBasePrice !== null ? configBasePrice : maxPrice;
                 const rate = configDropRate; 
-                if (rate <= 0) return;
-
-                const minVisiblePrice = y.min;
-                const maxVisiblePrice = y.max;
                 const lineEndX = width - 5;
 
                 ctx.save();
@@ -303,62 +308,32 @@
 
                 function drawLine(price, type) {
                     const yPos = y.getPixelForValue(price);
-                    
                     if (yPos < top - 10 || yPos > bottom + 10) return;
 
                     ctx.beginPath();
-                    ctx.lineWidth = 1;
-
                     if (type === 'base') {
                         ctx.strokeStyle = '#dc3545';
                         ctx.setLineDash([]);
                         ctx.fillStyle = '#dc3545';
-                    } else if (type === 'up') {
-                        ctx.strokeStyle = 'rgba(255, 99, 132, 0.6)';
+                    } else {
+                        ctx.strokeStyle = type === 'up' ? 'rgba(255, 99, 132, 0.6)' : 'rgba(0, 0, 0, 0.4)';
                         ctx.setLineDash([4, 4]);
-                        ctx.fillStyle = 'rgba(255, 99, 132, 0.9)';
-                    } else { // down
-                        ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
-                        ctx.setLineDash([4, 4]);
-                        ctx.fillStyle = '#555';
+                        ctx.fillStyle = type === 'up' ? 'rgba(255, 99, 132, 0.9)' : '#555';
                     }
 
                     ctx.moveTo(left, yPos);
                     ctx.lineTo(lineEndX, yPos);
                     ctx.stroke();
 
-                    let labelText = '';
-                    if (type === 'base') {
-                        labelText = `기준: $${price.toFixed(2)}`;
-                    } else {
-                        const diff = Math.abs((price - base) / base * 100);
-                        const sign = type === 'up' ? '+' : '-';
-                        labelText = `${sign}${diff.toFixed(1)}% ($${price.toFixed(2)})`;
-                    }
-                    
+                    const labelText = type === 'base' ? `기준: $${price.toFixed(2)}` : `${type === 'up' ? '+' : '-'}${Math.abs((price - base) / base * 100).toFixed(1)}% ($${price.toFixed(2)})`;
                     ctx.fillText(labelText, lineEndX - 5, yPos - 3);
                 }
 
                 drawLine(base, 'base');
-
-                let count = 1;
-                while (true) {
-                    const price = base * (1 - (rate * count) / 100);
-                    if (price < minVisiblePrice * 0.8) break; 
-                    drawLine(price, 'down');
-                    count++;
-                    if (count > 100) break; 
+                for (let i = 1; i <= 20; i++) {
+                    drawLine(base * (1 - (rate * i) / 100), 'down');
+                    drawLine(base * (1 + (rate * i) / 100), 'up');
                 }
-
-                count = 1;
-                while (true) {
-                    const price = base * (1 + (rate * count) / 100);
-                    if (price > maxVisiblePrice * 1.2) break; 
-                    drawLine(price, 'up');
-                    count++;
-                    if (count > 100) break; 
-                }
-
                 ctx.restore();
             }
         };
@@ -367,7 +342,6 @@
             if (!currentData) return;
             const ctx = document.getElementById('mainChart').getContext('2d');
             const tooltipEl = document.getElementById('chartjs-tooltip');
-            
             if (myChart) myChart.destroy();
 
             myChart = new Chart(ctx, {
@@ -378,19 +352,8 @@
                         label: currentData.symbol,
                         data: currentData.prices,
                         borderColor: '#0d6efd',
-                        backgroundColor: '#0d6efd',
-                        borderWidth: 2,
-                        
-                        // ★ 불릿 설정 ★
-                        pointRadius: 3,                 
-                        pointBackgroundColor: '#7693E1', 
-                        pointBorderWidth: 0,            
-                        
-                        pointHoverRadius: 6,
-                        pointHoverBackgroundColor: '#0d6efd',
-                        pointHoverBorderColor: '#fff',
-                        pointHoverBorderWidth: 2,
-
+                        pointRadius: 3,
+                        pointBackgroundColor: '#7693E1',
                         tension: 0.1,
                         fill: false
                     }]
@@ -399,13 +362,7 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    layout: {
-                        padding: {
-                            right: 70, 
-                            top: 20,
-                            bottom: 10
-                        }
-                    },
+                    layout: { padding: { right: 70, top: 20 } },
                     interaction: { mode: 'index', intersect: false },
                     plugins: {
                         legend: { display: false },
@@ -413,45 +370,23 @@
                             enabled: false,
                             external: function(context) {
                                 const tooltipModel = context.tooltip;
-                                if (tooltipModel.opacity === 0) {
-                                    tooltipEl.style.opacity = 0;
-                                    return;
-                                }
-
+                                if (tooltipModel.opacity === 0) { tooltipEl.style.opacity = 0; return; }
                                 if (tooltipModel.body) {
-                                    const title = tooltipModel.title || [];
                                     const rawPrice = context.chart.data.datasets[0].data[tooltipModel.dataPoints[0].dataIndex];
-                                    tooltipEl.innerHTML = `
-                                        <div>${title[0]}</div>
-                                        <div style="font-size:1.3em;">$${Number(rawPrice).toFixed(2)}</div>
-                                    `;
+                                    tooltipEl.innerHTML = `<div>${tooltipModel.title[0]}</div><div style="font-size:1.3em;">$${Number(rawPrice).toFixed(2)}</div>`;
                                 }
-
-                                const tooltipWidth = tooltipEl.offsetWidth;
-                                
                                 tooltipEl.style.opacity = 1;
-                                
-                                const leftPos = tooltipModel.caretX - (tooltipWidth / 2);
-                                tooltipEl.style.left = leftPos + 'px';
-                                
-                                const topPos = tooltipModel.caretY + 45; 
-                                tooltipEl.style.top = topPos + 'px';
+                                tooltipEl.style.left = (tooltipModel.caretX - (tooltipEl.offsetWidth / 2)) + 'px';
+                                tooltipEl.style.top = (tooltipModel.caretY + 45) + 'px';
                             }
                         }
                     },
-                    scales: {
-                        y: { grid: { display: false } },
-                        x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } }
-                    }
+                    scales: { y: { grid: { display: false } }, x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } } }
                 }
             });
         }
         
-        function destroyChart() {
-            if (myChart) myChart.destroy();
-            myChart = null;
-            currentData = null;
-        }
+        function destroyChart() { if (myChart) myChart.destroy(); myChart = null; currentData = null; }
     </script>
 </body>
 </html>

@@ -57,7 +57,7 @@
         .nav-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         h2 { margin: 0; font-size: 1.5rem; word-break: keep-all; }
 
-        .reset-btn { background: #6c757d; color: white; padding: 8px 15px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; margin-left: 10px;}
+        .reset-btn { background: #6c757d; color: white; padding: 8px 15px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; margin-left: 5px;}
         .reset-btn:hover { background: #5a6268; }
         
     </style>
@@ -75,7 +75,10 @@
 
         <div class="nav-header">
             <h2>📈 한국 주식 수익률 비교</h2>
-            <button class="reset-btn" onclick="resetLines()">⟲ 보통선</button>
+            <div>
+                <button class="reset-btn" onclick="resetLines()">⟲ 보통선</button>
+                <button class="reset-btn" style="background:#dc3545;" onclick="hideAllLines()">∅ 모두 숨김</button>
+            </div>
         </div>
         
         <p style="font-size: 0.9em; color: #666; margin-top:0;">범례를 클릭하여 <b>보통 → 강조(굵게) → 숨김</b> 순서로 변경할 수 있습니다. (자동 저장)</p>
@@ -132,27 +135,27 @@
 
         function resetLines() {
             if (!myChart) return;
-            let changed = false;
-
             stockList.forEach(item => {
-                if(item.state === 1) {
-                    item.state = 0;
-                    changed = true;
-                }
+                item.state = 0;
             });
+            saveSymbols();
+            updateChart();
+        }
 
-            if (changed) {
-                saveSymbols();
-                myChart.data.datasets.forEach((ds, index) => {
-                    if (ds.viewState === 1) {
-                        ds.viewState = 0;
-                        ds.borderWidth = 2; 
-                        const legendItem = document.querySelector(`.legend-item[data-index="${index}"]`);
-                        if(legendItem) legendItem.classList.remove('highlighted');
-                    }
-                });
-                myChart.update();
-            }
+        function hideAllLines() {
+            if (!myChart) return;
+            stockList.forEach(item => {
+                item.state = 2; // 숨김 상태
+            });
+            saveSymbols();
+            
+            myChart.data.datasets.forEach((ds, index) => {
+                ds.viewState = 2;
+                myChart.setDatasetVisibility(index, false);
+            });
+            
+            myChart.update();
+            generateCustomLegend(myChart.data.datasets);
         }
 
         function handleEnter(e) { if (e.key === 'Enter') searchAndAddSymbol(); }
