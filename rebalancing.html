@@ -95,7 +95,7 @@
             <div style="width: 1px; height: 24px; background: #ddd; margin: 0 5px;"></div>
             <div class="input-group">
                 <label for="dropRate">📉 등락폭(%):</label>
-                <input type="number" id="dropRate" class="number-input" placeholder="2.5" step="0.1" oninput="updateChartSettings()">
+                <input type="number" id="dropRate" class="number-input" placeholder="5.0" step="0.1" oninput="updateChartSettings()">
             </div>
             <div class="input-group">
                 <label for="basePrice">🚩 기준가($):</label>
@@ -124,16 +124,16 @@
         let currentData = null;
         const STORAGE_KEY = 'rebalancing_portfolio_v1';
 
-        let configDropRate = 2.5;
+        let configDropRate = 5.0;
         let configBasePrice = null;
 
         window.onload = function() {
             loadSymbols();
             if (symbols.length === 0) {
                 symbols = [
-                    { symbol: 'NVDA', basePrice: null, dropRate: 2.5 },
-                    { symbol: 'TQQQ', basePrice: null, dropRate: 5.0 },
-                    { symbol: 'SOXL', basePrice: null, dropRate: 10.0 }
+                    { symbol: 'NVDA', basePrice: null, dropRate: 5.0 },
+                    { symbol: 'AAPL', basePrice: null, dropRate: 5.0 },
+                    { symbol: 'GOOGL', basePrice: null, dropRate: 10.0 }
                 ];
                 saveSymbols();
             }
@@ -150,7 +150,7 @@
                 try {
                     const parsed = JSON.parse(stored);
                     if (parsed.length > 0 && typeof parsed[0] === 'string') {
-                        symbols = parsed.map(s => ({ symbol: s, basePrice: null, dropRate: 2.5 }));
+                        symbols = parsed.map(s => ({ symbol: s, basePrice: null, dropRate: 5.0 }));
                     } else {
                         symbols = parsed;
                     }
@@ -171,7 +171,7 @@
                 input.value = '';
                 return;
             }
-            symbols.push({ symbol: val, basePrice: null, dropRate: 2.5 });
+            symbols.push({ symbol: val, basePrice: null, dropRate: 5.0 });
             saveSymbols();
             input.value = '';
             selectSymbol(val);
@@ -187,7 +187,7 @@
                     currentSymbol = null;
                     destroyChart();
                     renderTags();
-                    document.getElementById('dropRate').value = 2.5;
+                    document.getElementById('dropRate').value = 5.0;
                     document.getElementById('basePrice').value = '';
                 }
             } else {
@@ -199,7 +199,7 @@
             currentSymbol = sym;
             const target = symbols.find(s => s.symbol === sym);
             if (target) {
-                configDropRate = target.dropRate !== undefined ? target.dropRate : 2.5;
+                configDropRate = target.dropRate !== undefined ? target.dropRate : 5.0;
                 configBasePrice = target.basePrice !== undefined ? target.basePrice : null;
                 document.getElementById('dropRate').value = configDropRate;
                 document.getElementById('basePrice').value = configBasePrice !== null ? configBasePrice : '';
@@ -230,7 +230,7 @@
             const dropInput = document.getElementById('dropRate').value;
             const priceInput = document.getElementById('basePrice').value;
             configDropRate = parseFloat(dropInput);
-            if (isNaN(configDropRate)) configDropRate = 2.5;
+            if (isNaN(configDropRate)) configDropRate = 5.0;
             configBasePrice = priceInput ? parseFloat(priceInput) : null;
             if (currentSymbol) {
                 const target = symbols.find(s => s.symbol === currentSymbol);
