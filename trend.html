@@ -63,7 +63,10 @@
 
         <div class="nav-header">
             <h2 style="margin:0;">📈 주식 수익률 비교</h2>
-            <button class="reset-btn" onclick="resetLines()">⟲ 보통선</button>
+            <div>
+                <button class="reset-btn" onclick="resetLines()">⟲ 보통선</button>
+                <button class="reset-btn" style="background:#dc3545; margin-left:5px;" onclick="hideAllLines()">∅ 모두 숨김</button>
+            </div>
         </div>
         
         <p style="font-size: 0.9em; color: #666;">범례(종목명)를 클릭하여 <b>강조 -> 보통 -> 숨김</b> 순서로 변경할 수 있습니다. (상태 자동 저장)</p>
@@ -136,7 +139,7 @@
             let changed = false;
 
             symbols.forEach(s => {
-                if(s.state === 1) {
+                if(s.state !== 0) {
                     s.state = 0;
                     changed = true;
                 }
@@ -144,15 +147,27 @@
 
             if (changed) {
                 saveSymbols();
-
-                myChart.data.datasets.forEach(ds => {
-                    if (ds.customState === 1) {
-                        ds.customState = 0;
-                        ds.borderWidth = 2; 
-                    }
+                myChart.data.datasets.forEach((ds, index) => {
+                    ds.customState = 0;
+                    ds.borderWidth = 2;
+                    myChart.setDatasetVisibility(index, true);
                 });
                 myChart.update();
             }
+        }
+
+        function hideAllLines() {
+            if (!myChart) return;
+            symbols.forEach(s => {
+                s.state = 3; // 상태 3: 숨김
+            });
+            saveSymbols();
+            myChart.data.datasets.forEach((ds, index) => {
+                ds.customState = 3;
+                ds.borderWidth = 2;
+                myChart.setDatasetVisibility(index, false);
+            });
+            myChart.update();
         }
 
         function handleEnter(e) { if (e.key === 'Enter') addSymbol(); }

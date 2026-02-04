@@ -34,12 +34,20 @@
             margin: 0 auto;
         }
 
-        .reset-btn { 
+        /* 버튼 컨테이너 스타일 */
+        .btn-container {
             position: absolute; top: 20px; right: 20px; z-index: 10;
+            display: flex; gap: 5px;
+        }
+
+        .reset-btn { 
             background-color: #6c757d; color: white; 
             border: none; border-radius: 5px; cursor: pointer; font-size: 14px; padding: 8px 15px;
+            transition: background 0.2s;
         }
         .reset-btn:hover { background-color: #5a6268; }
+        .hide-btn { background-color: #dc3545; }
+        .hide-btn:hover { background-color: #a71d2a; }
     </style>
 </head>
 <body>
@@ -53,7 +61,10 @@
     </div>
 
     <div class="chart-wrapper">
-        <button onclick="resetLines()" class="reset-btn">⟲ 보통선</button>
+        <div class="btn-container">
+            <button onclick="resetLines()" class="reset-btn">⟲ 보통선</button>
+            <button onclick="hideAllLines()" class="reset-btn hide-btn">∅ 모두 숨김</button>
+        </div>
         <canvas id="marketCapChart"></canvas>
     </div>
 
@@ -75,23 +86,29 @@
             localStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(savedStates));
         }
 
+        // 보통선 초기화 함수 (모든 선을 가시화 및 굵기 3으로)
         function resetLines() {
             if (!myChart) return;
-            
-            let changed = false;
-            myChart.data.datasets.forEach(ds => {
-                if (ds.toggleState === 1) {
-                    ds.toggleState = 0;
-                    ds.borderWidth = 3;
-                    savedStates[ds.symbolKey] = 0;
-                    changed = true;
-                }
+            myChart.data.datasets.forEach((ds, index) => {
+                ds.toggleState = 0;
+                ds.borderWidth = 3;
+                savedStates[ds.symbolKey] = 0;
+                myChart.setDatasetVisibility(index, true);
             });
+            saveStates();
+            myChart.update();
+        }
 
-            if (changed) {
-                saveStates();
-                myChart.update();
-            }
+        // 모두 숨김 함수 (모든 선을 숨김 상태로)
+        function hideAllLines() {
+            if (!myChart) return;
+            myChart.data.datasets.forEach((ds, index) => {
+                ds.toggleState = 3; // 상태 3: 숨김
+                savedStates[ds.symbolKey] = 3;
+                myChart.setDatasetVisibility(index, false);
+            });
+            saveStates();
+            myChart.update();
         }
 
         loadStates();
@@ -103,50 +120,33 @@
             try {
                 const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${dtStart}&period2=${dtEnd}&interval=1d`;
                 const url = `https://newcmnet.duckdns.org/proxy?url=${encodeURIComponent(yahooUrl)}`;
-                
                 const r = await fetch(url);
-                if(!r.ok) throw new Error(`HTTP error! status: ${r.status}`);
-                
                 const j = await r.json();
                 
-                // 야후 API 데이터 구조 유효성 검사 강화
-                if(!j.chart || !j.chart.result || !j.chart.result[0]) {
-                    console.warn(`${symbol}: 유효한 데이터 구조가 아닙니다.`);
-                    return null;
-                }
+                if(!j.chart || !j.chart.result || !j.chart.result[0]) return null;
 
                 const res = j.chart.result[0];
                 const timestamps = res.timestamp || [];
                 const quotes = res.indicators.quote[0];
                 const closes = quotes.close || [];
 
-                // 데이터가 비어있는지 확인
-                if (timestamps.length === 0 || closes.length === 0) return null;
-
                 const dates = timestamps.map(ts => new Date(ts * 1000).toISOString().slice(0, 10));
                 const marketCaps = closes.map((close, i) => {
                     return close ? (close * shares[symbol] / 1e12) : null;
                 }).filter(c => c !== null);
 
-                return { 
-                    dates: dates.slice(0, marketCaps.length), 
-                    marketCaps, 
-                    symbol 
-                };
+                return { dates: dates.slice(0, marketCaps.length), marketCaps, symbol };
             } catch(e) {
-                console.error(`${symbol} 로드 중 오류 발생:`, e.message);
                 return null;
             }
         }
 
         (async function() {
-            console.log('=== 90일 시총 그래프 시작 (3개월) ===');
             const res = await Promise.all(symbols.map(fetchHistory));
-            
             const validRes = res.filter(r => r && r.marketCaps.length > 10); 
             
             if(validRes.length < 3) {
-                document.body.innerHTML = '<h1 style="color:red;text-align:center;margin-top:200px;">❌ 데이터 부족 (' + validRes.length + '/10)<br><small>F12 콘솔 확인 또는 VPN 사용</small></h1>';
+                document.body.innerHTML = '<h1 style="color:red;text-align:center;margin-top:200px;">❌ 데이터 로드 실패</h1>';
                 return;
             }
 
@@ -177,7 +177,6 @@
                     borderWidth: bWidth,
                     hidden: isHidden, 
                     pointRadius: 1,
-                    pointHoverRadius: 5,
                     toggleState: state 
                 };
             });
@@ -198,15 +197,12 @@
                                 const dataset = ci.data.datasets[index];
                                 const sym = dataset.symbolKey;
 
-                                if (dataset.toggleState === undefined) {
-                                    dataset.toggleState = 0;
-                                }
-
                                 let nextState;
-                                if (dataset.toggleState === 0) nextState = 1;
-                                else if (dataset.toggleState === 1) nextState = 2;
-                                else if (dataset.toggleState === 2) nextState = 3;
-                                else if (dataset.toggleState === 3) nextState = 1;
+                                const curr = dataset.toggleState || 0;
+                                if (curr === 0) nextState = 1;
+                                else if (curr === 1) nextState = 2;
+                                else if (curr === 2) nextState = 3;
+                                else nextState = 1;
 
                                 if (nextState === 1) {
                                     dataset.borderWidth = 8;
@@ -216,14 +212,11 @@
                                     ci.setDatasetVisibility(index, true);
                                 } else if (nextState === 3) {
                                     ci.setDatasetVisibility(index, false);
-                                    dataset.borderWidth = 3; 
                                 }
 
                                 dataset.toggleState = nextState;
-                                
                                 savedStates[sym] = nextState;
                                 saveStates();
-
                                 ci.update();
                             }
                         },
@@ -231,26 +224,18 @@
                             mode: 'index',
                             intersect: false,
                             callbacks: {
-                                title: ctx => ctx[0].label,
-                                label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(2)}조 달러`
+                                label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(2)}T$`
                             }
                         }
                     },
                     scales: {
                         y: { 
-                            title: { display: true, text: '시총 (Trillion USD)' },
-                            grid: { color: 'rgba(0,0,0,0.05)' },
-                            ticks: { callback: v => (v || 0).toFixed(2) + 'T' }
+                            ticks: { callback: v => v.toFixed(1) + 'T' }
                         },
-                        x: { 
-                            title: { display: true, text: '날짜 (최근 90일+α)' },
-                            ticks: { maxTicksLimit: 15 }
-                        }
-                    },
-                    interaction: { mode: 'nearest', intersect: false }
+                        x: { ticks: { maxTicksLimit: 15 } }
+                    }
                 }
             });
-            console.log('✅ 90일 그래프 렌더링 완료!');
         })();
     </script>
 </body>
